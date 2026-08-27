@@ -5,8 +5,8 @@ import type { FlowEngine } from "../core/FlowEngine";
 
 export class AuthWindow {
   static async open(win: any, engine: FlowEngine) {
-    const existing = Services.wm.getMostRecentWindow("fulltextflow:auth");
-    if (existing) { existing.focus(); return; }
+    const existing = Services.wm.getMostRecentWindow("fulltextflow:auth") as any;
+    if (existing) { existing.focus?.(); return; }
     const credentials = await AuthManager.credentials();
     const bridge = {
       pluginName: PLUGIN_NAME,
