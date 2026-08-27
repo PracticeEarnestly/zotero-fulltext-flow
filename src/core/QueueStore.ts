@@ -15,6 +15,7 @@ export type QueueState =
   | "cancelled";
 
 export type QueueSource = "zotero" | "jlss" | null;
+export type DiagnosticLevel = "info" | "warning" | null;
 
 export type QueueEntry = {
   itemID: number;
@@ -38,6 +39,12 @@ export type QueueEntry = {
   remoteTaskStatus?: string;
   remoteTaskStatusLabel?: string;
   remoteCreateTime?: string;
+  matchStrategy?: string;
+  lastMatchedAt?: string;
+  unmatchedPolls?: number;
+  firstUnmatchedAt?: string;
+  diagnosticLevel?: DiagnosticLevel;
+  diagnosticMessage?: string;
   attachmentID?: number;
   verification?: VerificationStatus;
   verificationReason?: string;
@@ -59,6 +66,8 @@ export class QueueStore {
         source: null,
         doi: "",
         pmid: "",
+        unmatchedPolls: 0,
+        diagnosticLevel: null,
         createdAt: e.createdAt || e.updatedAt || new Date().toISOString(),
         ...e
       }));
@@ -106,7 +115,9 @@ export class QueueStore {
       state: "queued",
       source: null,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      unmatchedPolls: 0,
+      diagnosticLevel: null
     };
     entries.push(entry);
     this.save(entries);
@@ -136,6 +147,12 @@ export class QueueStore {
       remoteTaskStatus: undefined,
       remoteTaskStatusLabel: undefined,
       remoteCreateTime: undefined,
+      matchStrategy: undefined,
+      lastMatchedAt: undefined,
+      unmatchedPolls: 0,
+      firstUnmatchedAt: undefined,
+      diagnosticLevel: null,
+      diagnosticMessage: undefined,
       submittedAt: undefined,
       lastCheckedAt: undefined,
       nextCheckAt: undefined,
