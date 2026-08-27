@@ -15,11 +15,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Reconstruct source archive
+      - name: Reconstruct and verify source archive
         shell: bash
         run: |
           set -euo pipefail
-          cat .bootstrap/part* | base64 -d > /tmp/fulltextflow-source.zip
+          cat .bootstrap/part00_[0-3] .bootstrap/part0[1-9] | base64 -d > /tmp/fulltextflow-source.zip
+          echo '8e504d2973600cd24dd0aec1dccada5a029a98f25c00eaa11cc0eb504cfbe09a  /tmp/fulltextflow-source.zip' | sha256sum -c -
           rm -rf /tmp/fulltextflow-source
           mkdir -p /tmp/fulltextflow-source
           unzip -q /tmp/fulltextflow-source.zip -d /tmp/fulltextflow-source
