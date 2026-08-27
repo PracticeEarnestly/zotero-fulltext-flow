@@ -1,0 +1,10 @@
+node_modules/
+.scaffold/
+build/
+build-*/
+.local-build/
+*.xpi
+*.xpi.sha256
+!release/*.xpi
+!release/*.xpi.sha256
+.DS_Store

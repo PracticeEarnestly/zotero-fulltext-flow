@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        id="fulltextflow-auth-window"
+        windowtype="fulltextflow:auth"
+        title="FullTextFlow · 聚联登录"
+        orient="vertical">
+  <vbox flex="1" style="padding:10px; gap:8px;">
+    <description id="status" style="font-weight:600;">正在打开聚联登录页…</description>
+    <description>已保存账号时，FullTextFlow 会尝试自动填充并登录；如出现验证码/机构验证，请在下方网页中手动完成。登录成功后插件会自动捕获 token 并恢复等待任务。</description>
+    <hbox style="gap:8px;">
+      <button id="autofill" label="自动填充并登录"/>
+      <button id="detect" label="检测登录状态"/>
+      <button id="reload" label="重新加载"/>
+      <button id="external" label="在外部浏览器打开"/>
+      <spacer flex="1"/>
+      <button id="close" label="关闭"/>
+    </hbox>
+    <browser id="jlss-browser" type="content" remote="false" maychangeremoteness="false"
+             disableglobalhistory="true" flex="1" style="min-height:560px; border:1px solid #bbb;"/>
+  </vbox>
+  <script src="chrome://fulltextflow/content/auth-window.js"/>
+</window>
