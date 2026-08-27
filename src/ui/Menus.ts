@@ -165,7 +165,7 @@ export class Menus {
     const current = await AuthManager.credentials();
     const username = { value: current.username || "" };
     const password = { value: current.password || "" };
-    const ok = Services.prompt.promptUsernameAndPassword(
+    const ok = (Services.prompt.promptUsernameAndPassword as any)(
       win,
       PLUGIN_NAME,
       "输入聚联网页登录账号和密码。凭证仅保存在 Zotero/Firefox Login Manager，不写入普通首选项或日志。",

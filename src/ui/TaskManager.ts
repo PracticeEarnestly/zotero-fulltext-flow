@@ -4,9 +4,9 @@ import type { FlowEngine } from "../core/FlowEngine";
 
 export class TaskManager {
   static open(win: any, engine: FlowEngine) {
-    const existing = Services.wm.getMostRecentWindow("fulltextflow:tasks");
+    const existing = Services.wm.getMostRecentWindow("fulltextflow:tasks") as any;
     if (existing) {
-      existing.focus();
+      existing.focus?.();
       existing.FullTextFlowTasks?.refresh?.();
       return;
     }
