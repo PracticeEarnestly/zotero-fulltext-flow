@@ -14,6 +14,7 @@ export class TaskManager {
     const bridge = {
       pluginName: PLUGIN_NAME,
       pollMinutes: Math.max(1, Number(Zotero.Prefs.get(`${PREF_PREFIX}.pollMinutes`) || 5)),
+      pendingWarnHours: Math.max(1, Number(Zotero.Prefs.get(`${PREF_PREFIX}.pendingWarnHours`) || 24)),
       getRows: () => QueueStore.load().map(e => ({
         itemKey: e.itemKey,
         libraryID: e.libraryID,
@@ -32,6 +33,12 @@ export class TaskManager {
         remoteTaskStatus: e.remoteTaskStatus || "",
         remoteTaskStatusLabel: e.remoteTaskStatusLabel || "",
         remoteCreateTime: e.remoteCreateTime || "",
+        matchStrategy: e.matchStrategy || "",
+        lastMatchedAt: e.lastMatchedAt || "",
+        unmatchedPolls: Number(e.unmatchedPolls || 0),
+        firstUnmatchedAt: e.firstUnmatchedAt || "",
+        diagnosticLevel: e.diagnosticLevel || "",
+        diagnosticMessage: e.diagnosticMessage || "",
         cancelledAt: e.cancelledAt || "",
         cancelNote: e.cancelNote || ""
       })),
@@ -50,7 +57,7 @@ export class TaskManager {
     win.openDialog(
       "chrome://fulltextflow/content/task-manager.xhtml",
       "fulltextflow-task-manager",
-      "chrome,centerscreen,resizable,width=1380,height=720",
+      "chrome,centerscreen,resizable,width=1540,height=760",
       { wrappedJSObject: bridge }
     );
   }
