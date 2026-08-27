@@ -8,7 +8,7 @@
   persist="screenX screenY width height"
 >
   <script src="chrome://fulltextflow/content/task-manager.js"/>
-  <vbox flex="1" style="padding: 12px; min-width: 1180px; min-height: 560px;">
+  <vbox flex="1" style="padding: 12px; min-width: 1320px; min-height: 600px;">
     <description id="summary" style="font-weight: 600; margin-bottom: 3px;">正在读取任务…</description>
     <description id="active-summary" style="margin-bottom: 9px; color: #555;">正在读取当前阶段…</description>
     <hbox style="margin-bottom: 8px; gap: 6px;">
@@ -20,20 +20,22 @@
       <spacer flex="1"/>
       <button id="close" label="关闭"/>
     </hbox>
-    <description style="margin-bottom: 6px; color: #666;">提示：任务列表每 2 秒自动刷新。取消已提交聚联的任务只停止本地后续处理，不保证撤销聚联远端请求。</description>
+    <description style="margin-bottom: 6px; color: #666;">提示：任务列表每 2 秒自动刷新。“未匹配 ×N”表示连续 N 次未能把本地任务与聚联远端记录对应；已确认的远端任务长期处理中只会提示核对，不会自动判定失败。</description>
     <listbox id="tasks" flex="1" seltype="multiple">
       <listhead>
         <listheader label="状态" style="width: 100px;"/>
         <listheader label="进度" style="width: 60px;"/>
         <listheader label="当前阶段" style="width: 235px;"/>
         <listheader label="来源" style="width: 70px;"/>
-        <listheader label="论文" style="width: 360px;"/>
+        <listheader label="论文" style="width: 340px;"/>
         <listheader label="聚联任务号/状态" style="width: 170px;"/>
+        <listheader label="远端匹配" style="width: 120px;"/>
         <listheader label="已等待" style="width: 100px;"/>
+        <listheader label="最后匹配" style="width: 145px;"/>
         <listheader label="上次检查" style="width: 145px;"/>
         <listheader label="下次检查" style="width: 145px;"/>
         <listheader label="核验" style="width: 90px;"/>
-        <listheader label="说明" style="width: 320px;"/>
+        <listheader label="说明/诊断" style="width: 380px;"/>
       </listhead>
       <listcols>
         <listcol style="width: 100px;"/>
@@ -42,7 +44,9 @@
         <listcol style="width: 70px;"/>
         <listcol flex="1"/>
         <listcol style="width: 170px;"/>
+        <listcol style="width: 120px;"/>
         <listcol style="width: 100px;"/>
+        <listcol style="width: 145px;"/>
         <listcol style="width: 145px;"/>
         <listcol style="width: 145px;"/>
         <listcol style="width: 90px;"/>
