@@ -29,7 +29,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rsync -a --delete --exclude '.git/' /tmp/fulltextflow-source/zotero-fulltext-flow/ ./
+          rsync -a --delete \
+            --exclude '.git/' \
+            --exclude '.github/workflows/' \
+            /tmp/fulltextflow-source/zotero-fulltext-flow/ ./
+          rm -rf .bootstrap
       - name: Commit imported source
         shell: bash
         run: |
