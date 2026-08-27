@@ -1,6 +1,6 @@
 ---
 name: Task diagnosis
-aabout: Report a stuck or mismatched JLSS task without sharing credentials
+about: Report a stuck or mismatched JLSS task without sharing credentials
 title: "[Task] "
 labels: ""
 assignees: ""
