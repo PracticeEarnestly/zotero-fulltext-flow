@@ -1,6 +1,7 @@
 import { PREF_PREFIX } from "../config";
 import type { ItemMetadata } from "./Metadata";
 import type { VerificationStatus } from "./PdfVerifier";
+import type { RetrievalStrategy } from "./RetrievalStrategy";
 
 export type QueueState =
   | "queued"
@@ -28,6 +29,7 @@ export type QueueEntry = {
   title: string;
   state: QueueState;
   source: QueueSource;
+  retrievalStrategy?: RetrievalStrategy;
   createdAt: string;
   submittedAt?: string;
   updatedAt: string;
@@ -157,7 +159,8 @@ export class QueueStore {
       lastCheckedAt: undefined,
       nextCheckAt: undefined,
       cancelledAt: undefined,
-      cancelNote: undefined
+      cancelNote: undefined,
+      retrievalStrategy: undefined
     });
   }
 

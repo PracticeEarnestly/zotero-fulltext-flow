@@ -6,6 +6,7 @@ import { QueueStore, type QueueEntry } from "./QueueStore";
 import { hasUsablePDF } from "./AttachmentDetector";
 import { NativeFullText } from "./NativeFullText";
 import { PdfVerifier } from "./PdfVerifier";
+import { getRetrievalStrategy } from "./RetrievalStrategy";
 
 type RecordMatch = {
   record: any;
@@ -34,7 +35,8 @@ export class FlowEngine {
     let queued = 0, native = 0, skipped = 0, failed = 0, waitingAuth = 0;
     const generation = this.cancelGeneration;
     const maxBatch = Math.max(1, Number(Zotero.Prefs.get(`${PREF_PREFIX}.maxBatch`) || 50));
-    const nativeFirst = this.prefBool(`${PREF_PREFIX}.nativeFirst`, true);
+    const strategy = getRetrievalStrategy();
+    const nativeFirst = strategy === "zotero_then_jlss" || strategy === "zotero_only";
 
     for (const metadata of list.slice(0, maxBatch)) {
       if (generation !== this.cancelGeneration) break;
@@ -48,6 +50,7 @@ export class FlowEngine {
       }
 
       QueueStore.upsert(metadata);
+      QueueStore.patch(metadata.itemKey, metadata.libraryID, { retrievalStrategy: strategy });
 
       if (nativeFirst) {
         QueueStore.patch(metadata.itemKey, metadata.libraryID, { state: "native_search", source: null, error: undefined });
@@ -97,6 +100,19 @@ export class FlowEngine {
         }
       }
 
+      if (strategy === "zotero_only") {
+        QueueStore.patch(metadata.itemKey, metadata.libraryID, {
+          state: "failed",
+          source: "zotero",
+          diagnosticLevel: "info",
+          diagnosticMessage: "当前策略为“仅使用 Zotero”；Zotero 未找到全文，因此未向聚联提交。",
+          error: "Zotero 内置全文搜索未找到 PDF。可切换获取策略后重试。"
+        });
+        failed++;
+        await this.delay(250);
+        continue;
+      }
+
       try {
         if (QueueStore.isCancelled(metadata.itemKey, metadata.libraryID)) continue;
         QueueStore.patch(metadata.itemKey, metadata.libraryID, {
@@ -139,10 +155,15 @@ export class FlowEngine {
           waitingAuth++;
         }
         else {
+          const message = e instanceof Error ? e.message : String(e);
+          if (strategy === "jlss_then_zotero") {
+            const fallbackFound = await this.tryNativeFallback(item, metadata, `聚联提交失败：${message}`);
+            if (fallbackFound) { native++; continue; }
+          }
           QueueStore.patch(metadata.itemKey, metadata.libraryID, {
             state: "failed",
             source: "jlss",
-            error: e instanceof Error ? e.message : String(e)
+            error: message
           });
           failed++;
         }
@@ -292,6 +313,14 @@ export class FlowEngine {
         });
 
         if (TASK_FAILED.has(record.taskStatus)) {
+          if (entry.retrievalStrategy === "jlss_then_zotero") {
+            const fallbackFound = await this.tryNativeFallback(
+              item,
+              entry,
+              `聚联远端明确返回失败/异常状态（status=${record.taskStatus}）`
+            );
+            if (fallbackFound) continue;
+          }
           QueueStore.patch(entry.itemKey, entry.libraryID, {
             state: "failed",
             diagnosticLevel: "warning",
@@ -329,11 +358,20 @@ export class FlowEngine {
           });
         }
         catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          if (entry.retrievalStrategy === "jlss_then_zotero") {
+            const fallbackFound = await this.tryNativeFallback(
+              item,
+              entry,
+              `聚联已返回成功状态，但 PDF 下载或核验失败：${message}`
+            );
+            if (fallbackFound) continue;
+          }
           QueueStore.patch(entry.itemKey, entry.libraryID, {
             state: "failed",
             diagnosticLevel: "warning",
             diagnosticMessage: "聚联已返回成功状态，但 PDF 下载或核验阶段失败。",
-            error: e instanceof Error ? e.message : String(e)
+            error: message
           });
         }
       }
@@ -341,6 +379,71 @@ export class FlowEngine {
     finally {
       this.polling = false;
     }
+  }
+
+  private async tryNativeFallback(
+    item: any,
+    entry: { itemKey: string; libraryID: number },
+    reason: string
+  ): Promise<boolean> {
+    QueueStore.patch(entry.itemKey, entry.libraryID, {
+      state: "native_search",
+      diagnosticLevel: "info",
+      diagnosticMessage: `${reason}；正在尝试 Zotero 后补。`
+    });
+
+    const nativeResult = await NativeFullText.tryFind(item);
+    if (QueueStore.isCancelled(entry.itemKey, entry.libraryID)) {
+      if (nativeResult.found && nativeResult.attachmentID) {
+        QueueStore.patch(entry.itemKey, entry.libraryID, {
+          source: "zotero",
+          attachmentID: nativeResult.attachmentID,
+          cancelNote: "任务已取消；取消生效前 Zotero 后补已获取全文，现有附件予以保留。"
+        });
+      }
+      return Boolean(nativeResult.found);
+    }
+
+    if (!nativeResult.found) {
+      QueueStore.patch(entry.itemKey, entry.libraryID, {
+        nativeError: nativeResult.error,
+        diagnosticLevel: "warning",
+        diagnosticMessage: `${reason}；Zotero 后补也未找到全文。`
+      });
+      return false;
+    }
+
+    let verification: any = {
+      status: "inconclusive",
+      reason: "由 Zotero Find Full Text 后补获取，但未完成二次文本核验。"
+    };
+    try {
+      const attachment: any = nativeResult.attachmentID ? Zotero.Items.get(nativeResult.attachmentID) : null;
+      const current = QueueStore.find(entry.itemKey, entry.libraryID);
+      if (attachment && current) verification = await PdfVerifier.verify(attachment, current);
+    }
+    catch (e) {
+      verification = {
+        status: "inconclusive",
+        reason: `Zotero 后补已获取 PDF，但二次核验未完成：${e instanceof Error ? e.message : String(e)}`
+      };
+    }
+
+    const state = verification.status === "review" ? "review" : "done";
+    QueueStore.patch(entry.itemKey, entry.libraryID, {
+      state,
+      source: "zotero",
+      attachmentID: nativeResult.attachmentID,
+      verification: verification.status,
+      verificationReason: verification.reason,
+      nativeError: nativeResult.error,
+      diagnosticLevel: state === "review" ? "warning" : null,
+      diagnosticMessage: state === "review"
+        ? `${reason}；Zotero 后补找到 PDF，但需要人工核对。`
+        : `${reason}；Zotero 后补成功。`,
+      error: state === "review" ? "Zotero 后补已获取 PDF，但身份核验未通过自动阈值，请人工核对。" : undefined
+    });
+    return true;
   }
 
   cancelEntry(itemKey: string, libraryID: number): boolean {
