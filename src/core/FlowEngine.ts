@@ -7,6 +7,12 @@ import { hasUsablePDF } from "./AttachmentDetector";
 import { NativeFullText } from "./NativeFullText";
 import { PdfVerifier } from "./PdfVerifier";
 
+type RecordMatch = {
+  record: any;
+  strategy: string;
+  score?: number;
+};
+
 export class FlowEngine {
   private timer: any = null;
   private polling = false;
@@ -93,7 +99,15 @@ export class FlowEngine {
 
       try {
         if (QueueStore.isCancelled(metadata.itemKey, metadata.libraryID)) continue;
-        QueueStore.patch(metadata.itemKey, metadata.libraryID, { state: "queued", source: "jlss", error: undefined });
+        QueueStore.patch(metadata.itemKey, metadata.libraryID, {
+          state: "queued",
+          source: "jlss",
+          error: undefined,
+          unmatchedPolls: 0,
+          firstUnmatchedAt: undefined,
+          diagnosticLevel: null,
+          diagnosticMessage: undefined
+        });
         await JLSSClient.submit(metadata);
         if (QueueStore.isCancelled(metadata.itemKey, metadata.libraryID)) {
           QueueStore.patch(metadata.itemKey, metadata.libraryID, {
@@ -108,6 +122,8 @@ export class FlowEngine {
           source: "jlss",
           submittedAt: new Date().toISOString(),
           nextCheckAt: new Date(Date.now() + 8000).toISOString(),
+          diagnosticLevel: "info",
+          diagnosticMessage: "已提交聚联，等待远端任务建立。",
           error: undefined
         });
         queued++;
@@ -216,6 +232,8 @@ export class FlowEngine {
       const checkedAt = new Date().toISOString();
       const minutes = Math.max(1, Number(Zotero.Prefs.get(`${PREF_PREFIX}.pollMinutes`) || 5));
       const nextCheckAt = new Date(Date.now() + minutes * 60_000).toISOString();
+      const warnHours = Math.max(1, Number(Zotero.Prefs.get(`${PREF_PREFIX}.pendingWarnHours`) || 24));
+
       for (const entry of active) {
         if (QueueStore.isCancelled(entry.itemKey, entry.libraryID)) continue;
         QueueStore.patch(entry.itemKey, entry.libraryID, { lastCheckedAt: checkedAt, nextCheckAt });
@@ -229,15 +247,31 @@ export class FlowEngine {
           continue;
         }
 
-        const record = this.matchRecord(records, entry);
-        if (!record) {
+        const match = this.matchRecord(records, entry);
+        if (!match) {
+          const unmatchedPolls = Number(entry.unmatchedPolls || 0) + 1;
+          const firstUnmatchedAt = entry.firstUnmatchedAt || checkedAt;
+          const warning = unmatchedPolls >= 3;
           QueueStore.patch(entry.itemKey, entry.libraryID, {
             state: "pending",
             remoteTaskStatus: "",
-            remoteTaskStatusLabel: "尚未在聚联任务列表匹配到记录"
+            remoteTaskStatusLabel: "尚未在聚联任务列表匹配到记录",
+            unmatchedPolls,
+            firstUnmatchedAt,
+            diagnosticLevel: warning ? "warning" : "info",
+            diagnosticMessage: warning
+              ? `连续 ${unmatchedPolls} 次未匹配到聚联远端任务。可能是远端任务尚未建立、任务标题被改写，或远端列表结构发生变化。`
+              : `第 ${unmatchedPolls} 次尚未匹配到聚联远端任务，继续等待下一次检查。`
           });
           continue;
         }
+
+        const record = match.record;
+        const pendingHours = this.hoursSince(entry.submittedAt || entry.createdAt);
+        const longRunning = !TASK_FAILED.has(record.taskStatus)
+          && record.taskStatus !== TASK_SUCCESS
+          && pendingHours >= warnHours;
+        const strategyLabel = this.matchStrategyLabel(match.strategy, match.score);
 
         QueueStore.patch(entry.itemKey, entry.libraryID, {
           taskUUID: record.uuid,
@@ -246,11 +280,24 @@ export class FlowEngine {
           remoteTaskStatus: record.taskStatus,
           remoteTaskStatusLabel: this.remoteStatusLabel(record.taskStatus),
           remoteCreateTime: record.createTime,
+          matchStrategy: match.strategy,
+          lastMatchedAt: checkedAt,
+          unmatchedPolls: 0,
+          firstUnmatchedAt: undefined,
+          diagnosticLevel: longRunning ? "warning" : "info",
+          diagnosticMessage: longRunning
+            ? `已通过${strategyLabel}确认远端任务，但聚联已持续处理约 ${Math.floor(pendingHours)} 小时。建议到聚联用户中心核对。`
+            : `已通过${strategyLabel}匹配聚联远端任务。`,
           state: record.taskStatus === TASK_SUCCESS ? "downloading" : "pending"
         });
 
         if (TASK_FAILED.has(record.taskStatus)) {
-          QueueStore.patch(entry.itemKey, entry.libraryID, { state: "failed", error: `聚联任务失败（status=${record.taskStatus}）` });
+          QueueStore.patch(entry.itemKey, entry.libraryID, {
+            state: "failed",
+            diagnosticLevel: "warning",
+            diagnosticMessage: `聚联远端明确返回失败/异常状态（status=${record.taskStatus}）。`,
+            error: `聚联任务失败（status=${record.taskStatus}）`
+          });
           continue;
         }
         if (record.taskStatus !== TASK_SUCCESS) continue;
@@ -276,11 +323,18 @@ export class FlowEngine {
             attachmentID: Number(result.attachment?.id || 0) || undefined,
             verification: result.verification.status,
             verificationReason: result.verification.reason,
+            diagnosticLevel: null,
+            diagnosticMessage: undefined,
             error: state === "review" ? "PDF 已下载，但身份核验未通过自动阈值，请人工核对。" : undefined
           });
         }
         catch (e) {
-          QueueStore.patch(entry.itemKey, entry.libraryID, { state: "failed", error: e instanceof Error ? e.message : String(e) });
+          QueueStore.patch(entry.itemKey, entry.libraryID, {
+            state: "failed",
+            diagnosticLevel: "warning",
+            diagnosticMessage: "聚联已返回成功状态，但 PDF 下载或核验阶段失败。",
+            error: e instanceof Error ? e.message : String(e)
+          });
         }
       }
     }
@@ -306,18 +360,107 @@ export class FlowEngine {
     return `人工查找/处理中（status=${status}）`;
   }
 
-  private matchRecord(records: any[], entry: QueueEntry) {
-    // Prefer persisted UUID/task code when known. Fall back to normalized task title.
+  private matchRecord(records: any[], entry: QueueEntry): RecordMatch | null {
     if (entry.taskUUID) {
-      const byUUID = records.find(r => r.uuid === entry.taskUUID);
-      if (byUUID) return byUUID;
+      const byUUID = records.find(r => String(r.uuid || "") === entry.taskUUID);
+      if (byUUID) return { record: byUUID, strategy: "uuid" };
     }
     if (entry.taskCode) {
-      const byCode = records.find(r => r.taskCode === entry.taskCode);
-      if (byCode) return byCode;
+      const byCode = records.find(r => String(r.taskCode || "") === entry.taskCode);
+      if (byCode) return { record: byCode, strategy: "task_code" };
     }
-    const q = normalizeQuery(entry.queryText);
-    return records.find(r => normalizeQuery(r.taskTitle) === q) || null;
+
+    const exactCandidates = [
+      { value: entry.queryText, strategy: "query_exact" },
+      { value: entry.doi, strategy: "doi_exact" },
+      { value: entry.pmid, strategy: "pmid_exact" },
+      { value: entry.title, strategy: "title_exact" }
+    ].filter(x => Boolean(normalizeQuery(x.value)));
+
+    for (const candidate of exactCandidates) {
+      const normalized = normalizeQuery(candidate.value);
+      const found = records.find(r => normalizeQuery(String(r.taskTitle || "")) === normalized);
+      if (found) return { record: found, strategy: candidate.strategy };
+    }
+
+    const normalizedDOI = normalizeQuery(entry.doi);
+    if (normalizedDOI) {
+      const byDOI = records.find(r => normalizeQuery(String(r.taskTitle || "")).includes(normalizedDOI));
+      if (byDOI) return { record: byDOI, strategy: "doi_contained" };
+    }
+
+    if (entry.pmid) {
+      const pmid = String(entry.pmid).trim();
+      const byPMID = records.find(r => {
+        const title = String(r.taskTitle || "");
+        return new RegExp(`(^|\\D)${this.escapeRegExp(pmid)}(\\D|$)`).test(title);
+      });
+      if (byPMID) return { record: byPMID, strategy: "pmid_contained" };
+    }
+
+    const targetTokens = this.titleTokens(entry.title);
+    if (targetTokens.length < 4) return null;
+
+    const scored = records
+      .map(record => ({ record, score: this.titleSimilarity(targetTokens, this.titleTokens(String(record.taskTitle || ""))) }))
+      .filter(x => x.score >= 0.72)
+      .sort((a, b) => b.score - a.score);
+
+    if (!scored.length) return null;
+    const best = scored[0];
+    const second = scored[1];
+    if (second && best.score < 0.92 && best.score - second.score < 0.08) return null;
+    return { record: best.record, strategy: "title_similarity", score: best.score };
+  }
+
+  private titleTokens(value: string): string[] {
+    const stop = new Set(["the", "and", "for", "with", "from", "that", "this", "into", "using", "study", "analysis", "of", "in", "on", "to", "a", "an"]);
+    return Array.from(new Set(
+      String(value || "")
+        .normalize("NFKC")
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .split(/\s+/)
+        .map(x => x.trim())
+        .filter(x => x.length >= 3 && !stop.has(x))
+    ));
+  }
+
+  private titleSimilarity(target: string[], remote: string[]): number {
+    if (!target.length || !remote.length) return 0;
+    const remoteSet = new Set(remote);
+    const intersection = target.filter(x => remoteSet.has(x)).length;
+    const coverage = intersection / target.length;
+    const union = new Set([...target, ...remote]).size;
+    const jaccard = union ? intersection / union : 0;
+    return coverage * 0.75 + jaccard * 0.25;
+  }
+
+  private matchStrategyLabel(strategy: string, score?: number): string {
+    const labels: Record<string, string> = {
+      uuid: "UUID",
+      task_code: "任务号",
+      query_exact: "提交内容精确匹配",
+      doi_exact: "DOI 精确匹配",
+      pmid_exact: "PMID 精确匹配",
+      title_exact: "标题精确匹配",
+      doi_contained: "DOI 包含匹配",
+      pmid_contained: "PMID 包含匹配",
+      title_similarity: "标题相似度匹配"
+    };
+    const label = labels[strategy] || strategy;
+    return score === undefined ? label : `${label}（${Math.round(score * 100)}%）`;
+  }
+
+  private hoursSince(value?: string): number {
+    if (!value) return 0;
+    const time = new Date(value).getTime();
+    if (!Number.isFinite(time)) return 0;
+    return Math.max(0, (Date.now() - time) / 3_600_000);
+  }
+
+  private escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
   private prefBool(name: string, fallback: boolean) {

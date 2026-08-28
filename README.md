@@ -1,8 +1,10 @@
 # FullTextFlow for Zotero
 
-**Current preview: 0.2.3**
+**Current preview: 0.2.4**
 
 **FullTextFlow** is a Zotero plugin for selectively completing missing full-text PDFs at the **Collection** level. It is intended for research libraries where only high-priority project folders need complete PDFs.
+
+The initial Zotero–JLSS workflow design was informed by the open GitHub project **[HiYvri/pdf-fetcher](https://github.com/HiYvri/pdf-fetcher)**, which demonstrated a practical Zotero → 聚联/JLSS → PDF attachment workflow. FullTextFlow is independently maintained and extends that idea with Collection-scoped execution, Zotero-native retrieval first, persistent queues, browser-assisted authentication, PDF verification, task diagnostics, cancellation controls, and GitHub CI.
 
 ## Core idea
 
@@ -16,6 +18,7 @@ Selected Zotero Collection
        -> DOI / URL / OA / custom resolvers
   -> if still missing: JLSS / 聚联医疗
   -> persistent background queue
+  -> remote task matching + diagnostics
   -> signed PDF download
   -> structural + DOI/title verification
   -> attach to original Zotero item
@@ -29,18 +32,20 @@ Selected Zotero Collection
 - Detect and skip items that already have a usable local PDF.
 - Extract identifiers in this order: **DOI → PMID → title → URL**.
 - Try Zotero's built-in file resolvers first: DOI, URL, Open Access, and configured custom resolvers.
-- Fall back to JLSS / 聚联医疗 literature delivery only when Zotero does not find a file.
+- Fall back to JLSS / 聚联医疗 only when Zotero does not find a file.
 - Persist a local task queue and poll JLSS status in the background.
+- Match remote JLSS tasks using UUID/task code first, then DOI/PMID/query/title evidence and guarded title similarity.
+- Diagnose repeated remote-task mismatches instead of showing an unexplained generic pending state.
+- Warn when a confirmed JLSS task remains in processing for a long time; long-running tasks are **not** automatically treated as failed.
 - Download successful PDFs and attach them to the original Zotero item.
 - Verify PDF structure and then use Zotero full-text extraction to check DOI/title consistency.
 - Mark uncertain results as **需复核** instead of silently treating them as confirmed.
-- Enable per-Collection **automatic full-text completion** for newly added items.
-- Keep low-priority Collections untouched.
-- Open a task manager window from either the Collection menu or Zotero Tools menu.
+- Enable per-Collection automatic full-text completion for newly added items.
+- Cancel selected or all local tasks without reactivating them during later polling.
 
 ## Installation
 
-1. Download `fulltextflow-0.2.3.xpi`.
+1. Download the current XPI artifact or release package.
 2. Zotero → **Tools → Plugins**.
 3. Choose **Install Plugin From File...** and select the XPI.
 4. Restart Zotero if requested.
@@ -86,10 +91,33 @@ By default:
 1. Existing local PDF → skip.
 2. Zotero Find Full Text → DOI / URL / OA / custom resolver.
 3. JLSS / 聚联医疗 fallback.
-4. PDF verification.
-5. Attach to the original item.
+4. Remote task diagnosis and polling.
+5. PDF verification.
+6. Attach to the original item.
 
 This reduces unnecessary JLSS requests and preserves your institution's delivery quota.
+
+## JLSS task matching and pending diagnosis
+
+FullTextFlow 0.2.4 no longer relies only on exact equality between the submitted query and JLSS `taskTitle`.
+
+Matching order:
+
+1. persisted JLSS UUID;
+2. persisted JLSS task code;
+3. exact submitted query / DOI / PMID / Zotero title;
+4. DOI or PMID contained in the remote title;
+5. guarded title-token similarity when the remote task title has been rewritten.
+
+After a match succeeds, the UUID/task code are persisted so later polling and Zotero restarts can use the stable identifiers.
+
+If no remote record can be matched:
+
+- the plugin records the number of consecutive unmatched polls;
+- after 3 consecutive misses, the task is marked **需关注**, not failed;
+- the task manager shows the last check, unmatched count, and diagnostic explanation.
+
+If a remote task **is confirmed** but remains in a non-terminal processing state for 24 hours by default, the plugin warns you to check the JLSS user center. It does not automatically declare failure. Only explicit JLSS failure/error states are automatically classified as failed.
 
 ## PDF verification
 
@@ -114,16 +142,21 @@ A structurally invalid file is removed automatically. A structurally valid but u
 
 Open **Tools → FullTextFlow 任务管理** or **Collection → FullTextFlow → 查看任务**.
 
-The 0.2.3 task manager refreshes the UI every 2 seconds and shows, for each item:
+The task manager refreshes every 2 seconds and shows, for each item:
 
 - task state and stage (`1/5` … `5/5`);
-- current operation (Zotero lookup, JLSS submission, manual lookup, download/verification);
+- current operation;
 - source (`Zotero` or `聚联`);
 - article title;
 - JLSS task code and remote status;
+- remote matching strategy or `未匹配 ×N`;
 - elapsed time;
+- last successful remote match;
 - last JLSS check and next scheduled check;
-- PDF verification status and detailed notes.
+- PDF verification status;
+- diagnostic explanation.
+
+The summary also shows **⚠ 需关注** when a task has repeated remote-match failures or has exceeded the configured long-running threshold.
 
 Actions:
 
@@ -133,83 +166,67 @@ Actions:
 - **取消全部进行中**;
 - **清理已完成/已取消**.
 
-Cancellation is a local FullTextFlow stop. If a request was already submitted to JLSS, the remote JLSS task may continue, but FullTextFlow will no longer poll or download it. A deliberately re-run Collection/item can enqueue a previously cancelled item again.
+Cancellation is a local FullTextFlow stop. If a request was already submitted to JLSS, the remote JLSS task may continue, but FullTextFlow will no longer poll or download it.
 
 ## Safety and limits
 
 - Default maximum items processed per manual batch: **50**.
+- Default JLSS poll interval: **5 minutes**.
+- Default confirmed-pending warning threshold: **24 hours**.
 - JLSS submissions are sequential rather than high-concurrency.
 - Existing local PDFs are skipped.
-- Queue state is persisted in Zotero preferences to avoid duplicate work.
-- JLSS task matching prefers saved UUID/task code when available, then falls back to normalized task title.
+- Queue state is persisted to avoid duplicate work.
 - JLSS task listing is paginated rather than limited to only the latest 20 rows.
 - JLSS integration is **unofficial**. Observed endpoints are not documented as a stable public API and can change.
 - Use FullTextFlow only within your institution's literature-delivery permissions, quotas, and applicable terms.
 
-## Current version: 0.2.3 Preview
+## Current version: 0.2.4 Preview
 
 Implemented:
 
 - Collection-scoped and recursive scanning;
-- per-Collection auto mode with visible checkbox state;
+- per-Collection auto mode;
 - Zotero Find Full Text first;
 - JLSS fallback;
+- secure/browser-assisted JLSS authentication;
 - persistent queue and background polling;
-- JLSS task pagination and UUID/task-code preference;
+- paginated JLSS task listing;
+- multi-evidence remote task matching;
+- repeated-unmatched and long-running pending diagnostics;
 - automatic attachment;
 - structural PDF gate;
 - DOI/title verification;
-- live task manager with detailed progress and cancellation controls.
+- live task manager with detailed progress and cancellation controls;
+- GitHub Actions typecheck and XPI build.
 
-Not yet validated in this repository environment:
+## Development workflow
 
-- live end-to-end operation against your personal Zotero profile and JLSS account;
-- every Zotero 7/8/9 UI variation;
-- scanned-PDF OCR verification.
+Repository workflow:
 
-## Build
+```text
+develop
+  -> changes
+  -> Pull Request
+  -> GitHub Actions typecheck + XPI build
+  -> main
+```
 
-Standard development build after installing dependencies:
+Build locally:
 
 ```bash
 npm install
 npm run typecheck
-npm run build
-```
-
-A dependency-light local build is also included:
-
-```bash
 npm run build:local
 ```
 
-`build:local` assembles the TypeScript sources, compiles them with `tsc`, builds the Zotero add-on directory, creates the XPI, and emits a SHA-256 checksum.
+## Prior art and acknowledgement
+
+FullTextFlow's early Zotero–JLSS integration design was informed by:
+
+- **HiYvri/pdf-fetcher** — https://github.com/HiYvri/pdf-fetcher
+
+That project demonstrated the feasibility of submitting literature-delivery requests from Zotero, polling JLSS tasks, obtaining a signed PDF URL, and attaching the PDF back to the Zotero item. FullTextFlow builds a broader Collection-scoped workflow around that concept and is maintained as an independent project.
 
 ## License
 
-MIT. FullTextFlow is an independent implementation and is not affiliated with Zotero or JLSS/聚联医疗.
-
-## 聚联自动登录（0.2.3）
-
-首次使用：
-
-1. Zotero → **工具 → FullTextFlow 聚联账号**。
-2. 在本机输入聚联账号和密码；凭证保存到 Mozilla Login Manager，不写入普通 Zotero Preferences。
-3. 插件打开内置聚联登录页，尝试自动填表并登录。
-4. 登录成功后，插件自动读取网页 Local Storage 中的 `token`、验证连接，并恢复 `waiting_auth` 队列。
-5. 若聚联要求验证码、MFA 或机构验证，插件不会绕过；请在内置网页登录页手动完成一次，之后会自动捕获 token。
-
-备用：**工具 → FullTextFlow 手动 Token（备用）**。0.2.0 里已保存的明文 token 会在首次启动新版时迁移到 Login Manager 并从普通首选项清空。
-
-
-
-## 0.2.2 登录同步修复
-
-如果聚联网页已经显示登录成功，但全文检索仍提示“需要登录”，0.2.2 会依次通过页面存储、Gecko 内容进程和 DOM Web Storage 管理器捕获并验证 token。只有 `/task/myHelpList` API 验证通过后，界面才显示“聚联 API 登录验证成功”。
-
-
-## 0.2.3 任务进度与取消
-
-任务窗口不再把所有活动状态笼统显示为“待处理”。它会分别显示 Zotero 查找、等待提交、聚联已提交、聚联查找中、下载/核验中、等待登录、完成、需复核、失败和已取消，并显示已等待时间、任务号以及上次/下次检查时间。
-
-选择一条或多条任务后可点击 **取消选中任务**；也可以 **取消全部进行中**。取消后状态固定为 `cancelled`，不会再进入后台轮询。
+MIT. FullTextFlow is an independent project and is not affiliated with Zotero or JLSS/聚联医疗.

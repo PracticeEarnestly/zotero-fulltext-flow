@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.4 - 2026-08-28
+
+- Improved JLSS remote-task matching beyond exact submitted-text equality.
+- Matching now prefers persisted UUID/task code, then DOI/PMID/query/title exact matches, DOI/PMID containment, and finally guarded title-similarity matching.
+- Added persisted match strategy and last successful remote-match time.
+- Added consecutive unmatched-poll counters and first-unmatched timestamps.
+- Added a default 24-hour warning threshold for confirmed remote tasks that remain in processing; long-running work is warned about but not automatically failed.
+- Added a warning after 3 consecutive polls where no JLSS remote record can be matched.
+- Expanded the task manager with remote-match strategy, last match time, warning counts, and diagnostic messages.
+- Added explicit project acknowledgement of the prior-art/reference project `HiYvri/pdf-fetcher` in the README and architecture documentation.
+
 ## 0.2.3 - 2026-08-24
 
 - Redesigned task manager with live 2-second UI refresh and per-item progress stages.

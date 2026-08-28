@@ -27,6 +27,18 @@
     cancelled: ["终止", "已停止本地处理"]
   };
 
+  const matchLabels = {
+    uuid: "UUID",
+    task_code: "任务号",
+    query_exact: "提交内容",
+    doi_exact: "DOI 精确",
+    pmid_exact: "PMID 精确",
+    title_exact: "标题精确",
+    doi_contained: "DOI 包含",
+    pmid_contained: "PMID 包含",
+    title_similarity: "标题相似度"
+  };
+
   let refreshTimer = null;
 
   function shortTime(value) {
@@ -59,17 +71,31 @@
 
   function rowReason(row) {
     if (row.state === "cancelled") return row.cancelNote || row.reason || "已取消";
-    if (row.remoteTaskStatusLabel && ["submitted", "pending", "downloading"].includes(row.state)) {
-      return row.reason ? `${row.remoteTaskStatusLabel}；${row.reason}` : row.remoteTaskStatusLabel;
+    const parts = [];
+    if (row.diagnosticMessage) parts.push(row.diagnosticMessage);
+    if (row.reason && !parts.includes(row.reason)) parts.push(row.reason);
+    if (!parts.length && row.remoteTaskStatusLabel && ["submitted", "pending", "downloading"].includes(row.state)) {
+      parts.push(row.remoteTaskStatusLabel);
     }
-    return row.reason || "";
+    return parts.join("；");
   }
 
   function statusDetail(row) {
+    if (row.diagnosticLevel === "warning") {
+      if (row.unmatchedPolls >= 3) return `⚠ 连续 ${row.unmatchedPolls} 次未匹配远端任务`;
+      if (row.state === "pending") return "⚠ 聚联任务长时间处理中";
+    }
     if (row.state === "pending" && row.remoteTaskStatusLabel) return row.remoteTaskStatusLabel;
     if (row.state === "submitted") return "等待首次同步聚联任务列表";
     if (row.state === "downloading") return row.remoteTaskStatusLabel || "聚联已返回全文";
     return progress[row.state]?.[1] || "";
+  }
+
+  function matchDetail(row) {
+    if (row.matchStrategy) return matchLabels[row.matchStrategy] || row.matchStrategy;
+    if (row.unmatchedPolls > 0) return `未匹配 ×${row.unmatchedPolls}`;
+    if (["submitted", "pending"].includes(row.state)) return "等待匹配";
+    return "";
   }
 
   function selectedKeys() {
@@ -95,11 +121,14 @@
 
     const counts = {};
     for (const row of rows) counts[row.state] = (counts[row.state] || 0) + 1;
+    const warningCount = rows.filter(row => row.diagnosticLevel === "warning" && !terminal(row.state)).length;
+
     for (const row of rows.slice().reverse()) {
       const item = document.createXULElement("listitem");
       item.setAttribute("data-item-key", row.itemKey);
       item.setAttribute("data-library-id", String(row.libraryID));
       item.setAttribute("data-state", row.state);
+      if (row.diagnosticLevel === "warning") item.setAttribute("tooltiptext", row.diagnosticMessage || "任务需要关注");
       const elapsedFrom = row.submittedAt || row.createdAt;
       const remote = row.taskCode
         ? `${row.taskCode}${row.remoteTaskStatus ? ` / ${row.remoteTaskStatus}` : ""}`
@@ -111,7 +140,9 @@
         cell(row.source === "zotero" ? "Zotero" : row.source === "jlss" ? "聚联" : ""),
         cell(row.title || row.queryText),
         cell(remote),
+        cell(matchDetail(row)),
         cell(elapsed(elapsedFrom)),
+        cell(shortTime(row.lastMatchedAt)),
         cell(shortTime(row.lastCheckedAt)),
         cell(shortTime(row.nextCheckAt)),
         cell(row.verification || ""),
@@ -130,13 +161,14 @@
       `失败 ${counts.failed || 0}`,
       `已取消 ${counts.cancelled || 0}`
     ];
+    if (warningCount) summaryParts.push(`⚠ 需关注 ${warningCount}`);
     document.getElementById("summary").textContent = summaryParts.join(" · ");
 
     const detailParts = ["native_search", "queued", "submitted", "pending", "downloading", "waiting_auth"]
       .filter(k => counts[k])
       .map(k => `${labels[k]} ${counts[k]}`);
     document.getElementById("active-summary").textContent = detailParts.length
-      ? `当前：${detailParts.join(" · ")}`
+      ? `当前：${detailParts.join(" · ")}。远端处理中超过 ${api.pendingWarnHours || 24} 小时会提示核对，但不会自动判定失败。`
       : "当前没有进行中的任务。";
   }
 
