@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import json, re, shutil, subprocess, zipfile, hashlib
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = None
@@ -41,6 +42,12 @@ def fill(text: str, mapping: dict[str,str]) -> str:
         text = text.replace(f"__{k}__", v)
     return text
 
+def validate_ui_sources():
+    for name in ["task-manager.xhtml", "auth-window.xhtml"]:
+        ET.parse(ROOT / "addon" / "content" / name)
+    for name in ["task-manager.js", "auth-window.js"]:
+        subprocess.run(["node", "--check", str(ROOT / "addon" / "content" / name)], check=True, cwd=ROOT)
+
 def main():
     global BUILD, RUNTIME
     pkg = json.loads((ROOT / "package.json").read_text())
@@ -51,6 +58,8 @@ def main():
     shutil.rmtree(TMP, ignore_errors=True)
     (BUILD / "content" / "scripts").mkdir(parents=True, exist_ok=True)
     TMP.mkdir(parents=True, exist_ok=True)
+
+    validate_ui_sources()
 
     declarations = (ROOT / "typings" / "runtime.d.ts").read_text()
     chunks = [declarations, "\n(() => {\n"]
@@ -70,6 +79,7 @@ def main():
         "--skipLibCheck",
         "--outFile", str(RUNTIME),
     ], check=True, cwd=ROOT)
+    subprocess.run(["node", "--check", str(RUNTIME)], check=True, cwd=ROOT)
 
     mapping = {
         "addonName": cfg["addonName"],
@@ -84,6 +94,7 @@ def main():
     }
     bootstrap = fill((ROOT / "addon" / "bootstrap.js").read_text(), mapping)
     manifest = fill((ROOT / "addon" / "manifest.json").read_text(), mapping)
+    json.loads(manifest)
     (BUILD / "bootstrap.js").write_text(bootstrap)
     (BUILD / "manifest.json").write_text(manifest)
     shutil.copy2(ROOT / "addon" / "prefs.js", BUILD / "prefs.js")
