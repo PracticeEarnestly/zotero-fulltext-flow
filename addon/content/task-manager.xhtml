@@ -2,15 +2,103 @@
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
 <window
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns:html="http://www.w3.org/1999/xhtml"
   id="fulltextflow-task-window"
   windowtype="fulltextflow:tasks"
   title="FullTextFlow 任务管理"
   persist="screenX screenY width height"
 >
   <script src="chrome://fulltextflow/content/task-manager.js"/>
-  <vbox flex="1" style="padding: 12px; min-width: 1320px; min-height: 600px;">
+  <html:style><![CDATA[
+    #table-wrap {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid ThreeDShadow;
+      background: Field;
+      color: FieldText;
+    }
+
+    #tasks-table {
+      border-collapse: separate;
+      border-spacing: 0;
+      table-layout: fixed;
+      width: 2580px;
+      min-width: 2580px;
+      font: message-box;
+      font-size: 12px;
+    }
+
+    #tasks-table th,
+    #tasks-table td {
+      box-sizing: border-box;
+      padding: 6px 8px;
+      border-right: 1px solid ThreeDLightShadow;
+      border-bottom: 1px solid ThreeDLightShadow;
+      vertical-align: top;
+    }
+
+    #tasks-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      background: -moz-Dialog;
+      color: -moz-DialogText;
+      font-weight: 600;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    #tasks-table tbody tr:nth-child(even) td {
+      background: rgba(128, 128, 128, 0.045);
+    }
+
+    #tasks-table tbody tr.warning td {
+      background: rgba(235, 170, 0, 0.12);
+    }
+
+    #tasks-table tbody tr.selected td {
+      background: rgba(70, 120, 200, 0.14);
+    }
+
+    #tasks-table tbody tr.cancelled td {
+      opacity: 0.68;
+    }
+
+    #tasks-table td.compact {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #tasks-table td.wrap {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+
+    #tasks-table td.center,
+    #tasks-table th.center {
+      text-align: center;
+    }
+
+    #tasks-table input[type="checkbox"] {
+      margin: 0;
+      vertical-align: middle;
+    }
+
+    #empty-row td {
+      padding: 28px 16px;
+      text-align: center;
+      opacity: 0.7;
+    }
+  ]]></html:style>
+
+  <vbox flex="1" style="padding: 12px; min-width: 980px; min-height: 600px;">
     <description id="summary" style="font-weight: 600; margin-bottom: 3px;">正在读取任务…</description>
     <description id="active-summary" style="margin-bottom: 9px; color: #555;">正在读取当前阶段…</description>
+
     <hbox style="margin-bottom: 8px; gap: 6px;">
       <button id="poll" label="立即检查聚联任务"/>
       <button id="retry" label="重试失败/需复核"/>
@@ -20,38 +108,47 @@
       <spacer flex="1"/>
       <button id="close" label="关闭"/>
     </hbox>
-    <description style="margin-bottom: 6px; color: #666;">提示：任务列表每 2 秒自动刷新。“未匹配 ×N”表示连续 N 次未能把本地任务与聚联远端记录对应；已确认的远端任务长期处理中只会提示核对，不会自动判定失败。</description>
-    <listbox id="tasks" flex="1" seltype="multiple">
-      <listhead>
-        <listheader label="状态" style="width: 100px;"/>
-        <listheader label="进度" style="width: 60px;"/>
-        <listheader label="当前阶段" style="width: 235px;"/>
-        <listheader label="来源" style="width: 70px;"/>
-        <listheader label="论文" style="width: 340px;"/>
-        <listheader label="聚联任务号/状态" style="width: 170px;"/>
-        <listheader label="远端匹配" style="width: 120px;"/>
-        <listheader label="已等待" style="width: 100px;"/>
-        <listheader label="最后匹配" style="width: 145px;"/>
-        <listheader label="上次检查" style="width: 145px;"/>
-        <listheader label="下次检查" style="width: 145px;"/>
-        <listheader label="核验" style="width: 90px;"/>
-        <listheader label="说明/诊断" style="width: 380px;"/>
-      </listhead>
-      <listcols>
-        <listcol style="width: 100px;"/>
-        <listcol style="width: 60px;"/>
-        <listcol style="width: 235px;"/>
-        <listcol style="width: 70px;"/>
-        <listcol flex="1"/>
-        <listcol style="width: 170px;"/>
-        <listcol style="width: 120px;"/>
-        <listcol style="width: 100px;"/>
-        <listcol style="width: 145px;"/>
-        <listcol style="width: 145px;"/>
-        <listcol style="width: 145px;"/>
-        <listcol style="width: 90px;"/>
-        <listcol flex="1"/>
-      </listcols>
-    </listbox>
+
+    <description style="margin-bottom: 6px; color: #666;">提示：任务列表每 2 秒自动刷新；表头固定，表格可横向/纵向滚动。使用首列复选框多选任务。“未匹配 ×N”表示连续 N 次未能把本地任务与聚联远端记录对应。</description>
+
+    <html:div id="table-wrap">
+      <html:table id="tasks-table">
+        <html:colgroup>
+          <html:col style="width: 42px;"/>
+          <html:col style="width: 105px;"/>
+          <html:col style="width: 64px;"/>
+          <html:col style="width: 250px;"/>
+          <html:col style="width: 72px;"/>
+          <html:col style="width: 390px;"/>
+          <html:col style="width: 190px;"/>
+          <html:col style="width: 130px;"/>
+          <html:col style="width: 100px;"/>
+          <html:col style="width: 155px;"/>
+          <html:col style="width: 155px;"/>
+          <html:col style="width: 155px;"/>
+          <html:col style="width: 95px;"/>
+          <html:col style="width: 487px;"/>
+        </html:colgroup>
+        <html:thead>
+          <html:tr>
+            <html:th class="center" title="选择/取消选择当前可见任务"><html:input id="select-all" type="checkbox"/></html:th>
+            <html:th>状态</html:th>
+            <html:th>进度</html:th>
+            <html:th>当前阶段</html:th>
+            <html:th>来源</html:th>
+            <html:th>论文</html:th>
+            <html:th>聚联任务号/状态</html:th>
+            <html:th>远端匹配</html:th>
+            <html:th>已等待</html:th>
+            <html:th>最后匹配</html:th>
+            <html:th>上次检查</html:th>
+            <html:th>下次检查</html:th>
+            <html:th>核验</html:th>
+            <html:th>说明/诊断</html:th>
+          </html:tr>
+        </html:thead>
+        <html:tbody id="tasks-body"/>
+      </html:table>
+    </html:div>
   </vbox>
 </window>
