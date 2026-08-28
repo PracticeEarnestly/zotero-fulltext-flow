@@ -1,0 +1,30 @@
+name: Fix FullTextFlow 0.2.7 README consistency
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-readme-0.2.7.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/fix_readme_0_2_7.py
+      - name: Commit README fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "PracticeEarnestly"
+          git config user.email "47146733+PracticeEarnestly@users.noreply.github.com"
+          git add README.md
+          git commit -m "Align README with 0.2.7 JLSS-default strategy"
+          git push origin HEAD:develop
