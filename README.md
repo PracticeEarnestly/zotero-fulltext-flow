@@ -85,6 +85,19 @@ Select one or more normal Zotero items and right-click:
 
 Items that already have a usable local PDF are skipped.
 
+## Full-text retrieval strategy
+
+Starting with **0.2.7**, FullTextFlow uses a global retrieval strategy shared by manual Collection runs, recursive runs, item-context actions, automatic Collection fetching, and retries.
+
+Available modes:
+
+1. **全部使用聚联（默认）** — skip Zotero Find Full Text and send every item missing a usable local PDF directly to JLSS.
+2. **聚联优先 → Zotero 后补** — use JLSS first; only if JLSS submission fails (non-auth), the remote task explicitly fails/errors, or PDF download/import fails does Zotero Find Full Text run as a fallback. Normal JLSS/manual processing is allowed to continue without duplicate retrieval.
+3. **Zotero 优先 → 聚联后补** — use Zotero Find Full Text first and submit to JLSS only when Zotero does not find a PDF.
+4. **仅使用 Zotero** — never submit a JLSS task.
+
+The strategy can be changed from either **Tools → FullTextFlow 全文获取策略** or the selected Collection's **FullTextFlow → 全文获取策略** submenu. Changing the global preference affects newly enqueued/retried work; an already-active JLSS task keeps the strategy recorded when it was submitted and is not rerouted mid-flight. Existing usable local PDFs are always skipped in every mode.
+
 ## Retrieval order
 
 By default:
@@ -203,6 +216,7 @@ Implemented:
 - per-Collection auto mode;
 - Zotero Find Full Text first;
 - JLSS fallback;
+- configurable four-mode Zotero/JLSS retrieval strategy (JLSS-only default);
 - secure/browser-assisted JLSS authentication;
 - persistent queue and background polling;
 - paginated JLSS task listing;

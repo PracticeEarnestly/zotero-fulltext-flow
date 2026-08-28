@@ -14,6 +14,7 @@ ORDER = [
     "src/core/AuthManager.ts",
     "src/core/AttachmentDetector.ts",
     "src/core/Metadata.ts",
+    "src/core/RetrievalStrategy.ts",
     "src/core/PdfVerifier.ts",
     "src/core/QueueStore.ts",
     "src/core/JLSSClient.ts",

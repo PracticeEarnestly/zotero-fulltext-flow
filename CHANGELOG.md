@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.7 - 2026-08-28
+
+- Added a global four-mode full-text retrieval strategy shared by manual Collection runs, recursive runs, item-context actions, automatic Collection fetching, and retries.
+- Changed the default strategy to **全部使用聚联** (`jlss_only`), matching the primary workflow preference for direct JLSS retrieval.
+- Added **聚联优先 → Zotero 后补** (`jlss_then_zotero`): Zotero is only attempted after non-auth JLSS submission failure, explicit remote failure/error, or PDF download/import failure; normal JLSS/manual processing does not trigger duplicate fallback retrieval.
+- Retained **Zotero 优先 → 聚联后补** (`zotero_then_jlss`) as the former behavior and added **仅使用 Zotero** (`zotero_only`).
+- Added mutually exclusive strategy radio menus under both Tools and Collection FullTextFlow menus.
+- Each queue entry records the strategy used at enqueue time so changing the global setting does not reroute already-active JLSS work.
+- Batch confirmation, result summaries, and task overview now show the current retrieval strategy.
+- Replaced the legacy `nativeFirst` default with `retrievalStrategy`.
+- Preserved acknowledgement of the prior-art/reference project `HiYvri/pdf-fetcher`.
+
 ## 0.2.6 - 2026-08-28
 
 - Fixed false-positive JLSS login status when an old API token remained usable after the JLSS website session had expired.

@@ -6,6 +6,7 @@ import { JLSSClient } from "../core/JLSSClient";
 import { AuthManager } from "../core/AuthManager";
 import { AuthWindow } from "./AuthWindow";
 import { TaskManager } from "./TaskManager";
+import { getRetrievalStrategy, RETRIEVAL_STRATEGY_OPTIONS, retrievalStrategyLabel, setRetrievalStrategy } from "../core/RetrievalStrategy";
 
 export class Menus {
   private windows = new Set<any>();
@@ -30,7 +31,7 @@ export class Menus {
       "fulltextflow-item", "fulltextflow-item-sep",
       "fulltextflow-collection-root", "fulltextflow-collection-sep",
       "fulltextflow-tools-settings", "fulltextflow-tools-login", "fulltextflow-tools-token",
-      "fulltextflow-tools-status", "fulltextflow-tools-tasks"
+      "fulltextflow-tools-status", "fulltextflow-tools-tasks", "fulltextflow-tools-strategy"
     ]) doc.getElementById(id)?.remove();
     this.windows.delete(win);
   }
@@ -45,11 +46,12 @@ export class Menus {
     item.setAttribute("label", "FullTextFlow：获取缺失全文");
     item.addEventListener("command", async () => {
       const selected = win.ZoteroPane?.getSelectedItems?.() || [];
+      const strategyLabel = retrievalStrategyLabel();
       const result = await this.engine.enqueueItems(selected);
       Services.prompt.alert(
         win,
         PLUGIN_NAME,
-        `Zotero 直接找到 ${result.native} 篇；提交聚联 ${result.queued} 篇；等待登录 ${result.waitingAuth} 篇；跳过 ${result.skipped} 篇；失败 ${result.failed} 篇。`
+        `获取策略：${strategyLabel}\nZotero 获取 ${result.native} 篇；提交聚联 ${result.queued} 篇；等待登录 ${result.waitingAuth} 篇；跳过 ${result.skipped} 篇；失败 ${result.failed} 篇。`
       );
       if (result.waitingAuth) await AuthWindow.open(win, this.engine);
     });
@@ -68,10 +70,11 @@ export class Menus {
     auto.id = "fulltextflow-collection-auto";
     auto.setAttribute("type", "checkbox");
     auto.addEventListener("command", () => this.toggleAuto(win));
+    const strategy = this.strategyMenu(win, "全文获取策略", "fulltextflow-collection-strategy");
     const login = this.menuItem(win, "聚联登录/刷新登录", () => AuthWindow.open(win, this.engine));
     const tasks = this.menuItem(win, "查看任务", () => TaskManager.open(win, this.engine));
     const poll = this.menuItem(win, "立即检查聚联任务", async () => { await this.engine.poll(); TaskManager.open(win, this.engine); });
-    menupopup.append(current, recursive, auto, login, tasks, poll);
+    menupopup.append(current, recursive, auto, strategy, login, tasks, poll);
     root.append(menupopup);
     popup.append(sep, root);
 
@@ -98,11 +101,45 @@ export class Menus {
     settings.id = "fulltextflow-tools-settings";
     const token = this.menuItem(win, "FullTextFlow 手动 Token（备用）", () => this.manualToken(win));
     token.id = "fulltextflow-tools-token";
+    const strategy = this.strategyMenu(win, "FullTextFlow 全文获取策略", "fulltextflow-tools-strategy");
     const tasks = this.menuItem(win, "FullTextFlow 任务管理", () => TaskManager.open(win, this.engine));
     tasks.id = "fulltextflow-tools-tasks";
     const status = this.menuItem(win, "FullTextFlow 任务概览", () => this.showStatus(win));
     status.id = "fulltextflow-tools-status";
-    popup.append(login, settings, token, tasks, status);
+    popup.append(login, settings, token, strategy, tasks, status);
+  }
+
+  private strategyMenu(win: any, label: string, id: string) {
+    const menu = win.document.createXULElement("menu");
+    menu.id = id;
+    menu.setAttribute("label", label);
+    const popup = win.document.createXULElement("menupopup");
+    const group = `${id}-radio-group`;
+
+    for (const option of RETRIEVAL_STRATEGY_OPTIONS) {
+      const item = win.document.createXULElement("menuitem");
+      item.setAttribute("type", "radio");
+      item.setAttribute("name", group);
+      item.setAttribute("value", option.value);
+      item.setAttribute("label", option.label);
+      item.setAttribute("tooltiptext", option.description);
+      item.addEventListener("command", () => {
+        setRetrievalStrategy(option.value);
+        Services.prompt.alert(win, PLUGIN_NAME, `全文获取策略已切换为：${option.label}
+
+${option.description}`);
+      });
+      popup.append(item);
+    }
+
+    popup.addEventListener("popupshowing", () => {
+      const current = getRetrievalStrategy();
+      for (const item of Array.from(popup.children) as any[]) {
+        item.setAttribute("checked", item.getAttribute("value") === current ? "true" : "false");
+      }
+    });
+    menu.append(popup);
+    return menu;
   }
 
   private menuItem(win: any, label: string, fn?: () => void | Promise<void>) {
@@ -122,7 +159,8 @@ export class Menus {
     const scan = await CollectionScanner.scan(collection, recursive);
     const maxBatch = Number(Zotero.Prefs.get(`${PREF_PREFIX}.maxBatch`) || 50);
     const submitCount = Math.min(scan.missingPDF.length, maxBatch);
-    const nativeFirst = this.prefBool(`${PREF_PREFIX}.nativeFirst`, true);
+    const strategy = getRetrievalStrategy();
+    const strategyLabel = retrievalStrategyLabel(strategy);
     const summary = [
       `分类：${collection.name || "未命名"}`,
       `范围：${recursive ? "本分类 + 全部子分类" : "仅本分类"}`,
@@ -132,7 +170,7 @@ export class Menus {
       `缺少 PDF：${scan.missingPDF.length}`,
       `无可用标识：${scan.noIdentifier}`,
       `本次最多处理：${submitCount}`,
-      `获取顺序：${nativeFirst ? "Zotero Find Full Text → 聚联" : "聚联"}`
+      `获取策略：${strategyLabel}`
     ].join("\n");
     if (!scan.missingPDF.length) { Services.prompt.alert(win, PLUGIN_NAME, `${summary}\n\n没有需要补齐的全文。`); return; }
     if (!Services.prompt.confirm(win, PLUGIN_NAME, `${summary}\n\n开始查找全文吗？`)) return;
@@ -140,7 +178,7 @@ export class Menus {
     Services.prompt.alert(
       win,
       PLUGIN_NAME,
-      `处理完成：Zotero 直接找到 ${result.native} 篇；提交聚联 ${result.queued} 篇；等待登录 ${result.waitingAuth} 篇；跳过 ${result.skipped} 篇；失败 ${result.failed} 篇。\n聚联任务会在后台自动检查。`
+      `获取策略：${strategyLabel}\n处理完成：Zotero 获取 ${result.native} 篇；提交聚联 ${result.queued} 篇；等待登录 ${result.waitingAuth} 篇；跳过 ${result.skipped} 篇；失败 ${result.failed} 篇。\n聚联任务会在后台自动检查。`
     );
     if (result.waitingAuth) await AuthWindow.open(win, this.engine);
   }
@@ -205,11 +243,12 @@ export class Menus {
     const active = QueueStore.active().length;
     const hasToken = await AuthManager.hasToken();
     const hasCredentials = await AuthManager.hasCredentials();
+    const strategyLabel = retrievalStrategyLabel();
     const lines = Object.entries(counts).map(([k,v]) => `${k}: ${v}`);
     Services.prompt.alert(
       win,
       PLUGIN_NAME,
-      `聚联 token：${hasToken ? "已保存" : "未登录"}\n自动登录凭证：${hasCredentials ? "已保存" : "未设置"}\n当前活动任务：${active}\n\n${lines.join("\n") || "暂无任务"}`
+      `全文获取策略：${strategyLabel}\n聚联 token：${hasToken ? "已保存" : "未登录"}\n自动登录凭证：${hasCredentials ? "已保存" : "未设置"}\n当前活动任务：${active}\n\n${lines.join("\n") || "暂无任务"}`
     );
   }
 
