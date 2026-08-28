@@ -1,10 +1,10 @@
 # FullTextFlow for Zotero
 
-**Current preview: 0.2.4**
+**Current preview: 0.2.5**
 
 **FullTextFlow** is a Zotero plugin for selectively completing missing full-text PDFs at the **Collection** level. It is intended for research libraries where only high-priority project folders need complete PDFs.
 
-The initial Zotero–JLSS workflow design was informed by the open GitHub project **[HiYvri/pdf-fetcher](https://github.com/HiYvri/pdf-fetcher)**, which demonstrated a practical Zotero → 聚联/JLSS → PDF attachment workflow. FullTextFlow is independently maintained and extends that idea with Collection-scoped execution, Zotero-native retrieval first, persistent queues, browser-assisted authentication, PDF verification, task diagnostics, cancellation controls, and GitHub CI.
+The initial Zotero–JLSS workflow design was informed by the open GitHub project **[HiYvri/pdf-fetcher](https://github.com/HiYvri/pdf-fetcher)**, which demonstrated a practical Zotero → 聚联/JLSS → PDF attachment workflow. FullTextFlow is independently maintained and extends that idea with Collection-scoped execution, Zotero-native retrieval first, persistent queues, browser-assisted authentication, PDF verification, task diagnostics, cancellation controls, a stable task-table UI, and GitHub CI.
 
 ## Core idea
 
@@ -42,6 +42,7 @@ Selected Zotero Collection
 - Mark uncertain results as **需复核** instead of silently treating them as confirmed.
 - Enable per-Collection automatic full-text completion for newly added items.
 - Cancel selected or all local tasks without reactivating them during later polling.
+- Use a stable HTML task table with sticky headers, horizontal/vertical scrolling, fixed columns, wrapped long text, and checkbox selection.
 
 ## Installation
 
@@ -99,7 +100,7 @@ This reduces unnecessary JLSS requests and preserves your institution's delivery
 
 ## JLSS task matching and pending diagnosis
 
-FullTextFlow 0.2.4 no longer relies only on exact equality between the submitted query and JLSS `taskTitle`.
+FullTextFlow 0.2.4+ no longer relies only on exact equality between the submitted query and JLSS `taskTitle`.
 
 Matching order:
 
@@ -142,7 +143,21 @@ A structurally invalid file is removed automatically. A structurally valid but u
 
 Open **Tools → FullTextFlow 任务管理** or **Collection → FullTextFlow → 查看任务**.
 
-The task manager refreshes every 2 seconds and shows, for each item:
+Starting with **0.2.5**, the legacy XUL list has been replaced by a real HTML table embedded in the Zotero window. This is intended to avoid column overlap and width instability across Zotero versions, DPI scaling, and different window sizes.
+
+The task table provides:
+
+- sticky column headers;
+- stable explicit column widths;
+- horizontal and vertical scrolling;
+- normal wrapping for article titles and diagnostics;
+- compact non-wrapping status/time columns;
+- checkbox-based row selection plus Select All;
+- selection persistence during the 2-second automatic refresh;
+- warning highlighting for tasks needing attention;
+- disabled selection for terminal tasks that can no longer be cancelled.
+
+For each item, the table shows:
 
 - task state and stage (`1/5` … `5/5`);
 - current operation;
@@ -162,7 +177,7 @@ Actions:
 
 - **立即检查聚联任务**;
 - **重试失败/需复核**;
-- **取消选中任务** — supports multi-select;
+- **取消选中任务** — select using the first-column checkboxes;
 - **取消全部进行中**;
 - **清理已完成/已取消**.
 
@@ -180,7 +195,7 @@ Cancellation is a local FullTextFlow stop. If a request was already submitted to
 - JLSS integration is **unofficial**. Observed endpoints are not documented as a stable public API and can change.
 - Use FullTextFlow only within your institution's literature-delivery permissions, quotas, and applicable terms.
 
-## Current version: 0.2.4 Preview
+## Current version: 0.2.5 Preview
 
 Implemented:
 
@@ -196,8 +211,8 @@ Implemented:
 - automatic attachment;
 - structural PDF gate;
 - DOI/title verification;
-- live task manager with detailed progress and cancellation controls;
-- GitHub Actions typecheck and XPI build.
+- stable HTML task table with checkbox selection and cancellation controls;
+- GitHub Actions typecheck, UI source validation, and XPI build.
 
 ## Development workflow
 
@@ -207,7 +222,7 @@ Repository workflow:
 develop
   -> changes
   -> Pull Request
-  -> GitHub Actions typecheck + XPI build
+  -> GitHub Actions typecheck + UI XML/JS validation + XPI build
   -> main
 ```
 
