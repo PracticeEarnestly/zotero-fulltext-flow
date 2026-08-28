@@ -1,9 +1,9 @@
 {
   "name": "zotero-fulltext-flow",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "type": "module",
-  "description": "Collection-scoped full-text completion for Zotero with native lookup, JLSS fallback, remote-task diagnostics, cancellation controls, verification, and secure authentication.",
+  "description": "Collection-scoped full-text completion for Zotero with native lookup, JLSS fallback, remote-task diagnostics, cancellation controls, stable task-table UI, verification, and secure authentication.",
   "author": "FullTextFlow contributors",
   "license": "MIT",
   "homepage": "https://github.com/PracticeEarnestly/zotero-fulltext-flow",
