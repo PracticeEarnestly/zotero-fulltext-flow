@@ -1,6 +1,8 @@
 /* global window, document */
 (() => {
   const api = window.arguments?.[0]?.wrappedJSObject;
+  const HTML_NS = "http://www.w3.org/1999/xhtml";
+
   const labels = {
     queued: "等待提交",
     native_search: "Zotero 查找",
@@ -40,6 +42,20 @@
   };
 
   let refreshTimer = null;
+  const selected = new Set();
+  let rowMap = new Map();
+
+  function html(tag) {
+    return document.createElementNS(HTML_NS, tag);
+  }
+
+  function keyOf(row) {
+    return `${Number(row.libraryID)}:${String(row.itemKey)}`;
+  }
+
+  function terminal(state) {
+    return ["done", "review", "failed", "cancelled"].includes(state);
+  }
 
   function shortTime(value) {
     if (!value) return "";
@@ -60,13 +76,6 @@
     if (hr < 24) return `${hr}小时${min % 60}分`;
     const day = Math.floor(hr / 24);
     return `${day}天${hr % 24}小时`;
-  }
-
-  function cell(value) {
-    const c = document.createXULElement("listcell");
-    c.setAttribute("label", String(value || ""));
-    c.setAttribute("crop", "end");
-    return c;
   }
 
   function rowReason(row) {
@@ -98,58 +107,122 @@
     return "";
   }
 
-  function selectedKeys() {
-    const box = document.getElementById("tasks");
-    const selected = box.selectedItems
-      ? Array.from(box.selectedItems)
-      : Array.from(box.children || []).filter(item => item.selected || item.getAttribute("selected") === "true");
-    return selected.map(item => ({
-      itemKey: item.getAttribute("data-item-key"),
-      libraryID: Number(item.getAttribute("data-library-id"))
-    })).filter(x => x.itemKey && Number.isFinite(x.libraryID));
+  function cell(value, className = "compact") {
+    const td = html("td");
+    td.className = className;
+    const text = String(value || "");
+    td.textContent = text;
+    if (text) td.title = text;
+    return td;
   }
 
-  function terminal(state) {
-    return ["done", "review", "failed", "cancelled"].includes(state);
+  function selectedKeys() {
+    const out = [];
+    for (const key of selected) {
+      const row = rowMap.get(key);
+      if (!row || terminal(row.state)) continue;
+      out.push({ itemKey: String(row.itemKey), libraryID: Number(row.libraryID) });
+    }
+    return out;
+  }
+
+  function updateSelectAllState() {
+    const control = document.getElementById("select-all");
+    if (!control) return;
+    const activeKeys = Array.from(rowMap.entries())
+      .filter(([, row]) => !terminal(row.state))
+      .map(([key]) => key);
+    const selectedCount = activeKeys.filter(key => selected.has(key)).length;
+    control.checked = activeKeys.length > 0 && selectedCount === activeKeys.length;
+    control.indeterminate = selectedCount > 0 && selectedCount < activeKeys.length;
+    control.disabled = activeKeys.length === 0;
+  }
+
+  function setRowSelected(tr, checkbox, key, checked) {
+    if (checked) selected.add(key);
+    else selected.delete(key);
+    checkbox.checked = checked;
+    tr.classList.toggle("selected", checked);
+    updateSelectAllState();
+  }
+
+  function renderRow(row) {
+    const key = keyOf(row);
+    const tr = html("tr");
+    tr.dataset.itemKey = String(row.itemKey);
+    tr.dataset.libraryId = String(row.libraryID);
+    tr.dataset.state = String(row.state);
+    if (row.diagnosticLevel === "warning") tr.classList.add("warning");
+    if (row.state === "cancelled") tr.classList.add("cancelled");
+    if (selected.has(key)) tr.classList.add("selected");
+
+    const selectTd = html("td");
+    selectTd.className = "center compact";
+    const checkbox = html("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = selected.has(key);
+    checkbox.disabled = terminal(row.state);
+    checkbox.title = terminal(row.state) ? "终止状态不可取消" : "选择此任务";
+    checkbox.addEventListener("click", event => event.stopPropagation());
+    checkbox.addEventListener("change", () => setRowSelected(tr, checkbox, key, checkbox.checked));
+    selectTd.appendChild(checkbox);
+
+    const elapsedFrom = row.submittedAt || row.createdAt;
+    const remote = row.taskCode
+      ? `${row.taskCode}${row.remoteTaskStatus ? ` / ${row.remoteTaskStatus}` : ""}`
+      : row.remoteTaskStatusLabel || "";
+
+    tr.append(
+      selectTd,
+      cell(labels[row.state] || row.state),
+      cell(progress[row.state]?.[0] || ""),
+      cell(statusDetail(row), "wrap"),
+      cell(row.source === "zotero" ? "Zotero" : row.source === "jlss" ? "聚联" : ""),
+      cell(row.title || row.queryText, "wrap"),
+      cell(remote, "wrap"),
+      cell(matchDetail(row)),
+      cell(elapsed(elapsedFrom)),
+      cell(shortTime(row.lastMatchedAt)),
+      cell(shortTime(row.lastCheckedAt)),
+      cell(shortTime(row.nextCheckAt)),
+      cell(row.verification || ""),
+      cell(rowReason(row), "wrap")
+    );
+
+    if (!terminal(row.state)) {
+      tr.addEventListener("click", event => {
+        if (event.target?.tagName?.toLowerCase() === "input") return;
+        setRowSelected(tr, checkbox, key, !selected.has(key));
+      });
+    }
+    return tr;
   }
 
   async function refresh() {
     const rows = api?.getRows?.() || [];
-    const box = document.getElementById("tasks");
-    const selectedBefore = new Set(selectedKeys().map(x => `${x.libraryID}:${x.itemKey}`));
-    while (box.itemCount) box.removeItemAt(0);
+    rowMap = new Map(rows.map(row => [keyOf(row), row]));
+    for (const key of Array.from(selected)) {
+      if (!rowMap.has(key)) selected.delete(key);
+    }
+
+    const body = document.getElementById("tasks-body");
+    while (body.firstChild) body.firstChild.remove();
 
     const counts = {};
     for (const row of rows) counts[row.state] = (counts[row.state] || 0) + 1;
     const warningCount = rows.filter(row => row.diagnosticLevel === "warning" && !terminal(row.state)).length;
 
-    for (const row of rows.slice().reverse()) {
-      const item = document.createXULElement("listitem");
-      item.setAttribute("data-item-key", row.itemKey);
-      item.setAttribute("data-library-id", String(row.libraryID));
-      item.setAttribute("data-state", row.state);
-      if (row.diagnosticLevel === "warning") item.setAttribute("tooltiptext", row.diagnosticMessage || "任务需要关注");
-      const elapsedFrom = row.submittedAt || row.createdAt;
-      const remote = row.taskCode
-        ? `${row.taskCode}${row.remoteTaskStatus ? ` / ${row.remoteTaskStatus}` : ""}`
-        : row.remoteTaskStatusLabel || "";
-      item.append(
-        cell(labels[row.state] || row.state),
-        cell(progress[row.state]?.[0] || ""),
-        cell(statusDetail(row)),
-        cell(row.source === "zotero" ? "Zotero" : row.source === "jlss" ? "聚联" : ""),
-        cell(row.title || row.queryText),
-        cell(remote),
-        cell(matchDetail(row)),
-        cell(elapsed(elapsedFrom)),
-        cell(shortTime(row.lastMatchedAt)),
-        cell(shortTime(row.lastCheckedAt)),
-        cell(shortTime(row.nextCheckAt)),
-        cell(row.verification || ""),
-        cell(rowReason(row))
-      );
-      box.append(item);
-      if (selectedBefore.has(`${row.libraryID}:${row.itemKey}`)) item.setAttribute("selected", "true");
+    if (!rows.length) {
+      const tr = html("tr");
+      tr.id = "empty-row";
+      const td = html("td");
+      td.colSpan = 14;
+      td.textContent = "暂无任务。";
+      tr.appendChild(td);
+      body.appendChild(tr);
+    }
+    else {
+      for (const row of rows.slice().reverse()) body.appendChild(renderRow(row));
     }
 
     const activeCount = rows.filter(r => !terminal(r.state)).length;
@@ -170,6 +243,8 @@
     document.getElementById("active-summary").textContent = detailParts.length
       ? `当前：${detailParts.join(" · ")}。远端处理中超过 ${api.pendingWarnHours || 24} 小时会提示核对，但不会自动判定失败。`
       : "当前没有进行中的任务。";
+
+    updateSelectAllState();
   }
 
   async function busy(button, fn) {
@@ -179,14 +254,17 @@
   }
 
   async function cancelSelected() {
-    const selected = selectedKeys();
-    if (!selected.length) {
-      window.alert("请先选择要取消的任务。可按 Ctrl/Command 多选。");
+    const rows = selectedKeys();
+    if (!rows.length) {
+      window.alert("请先勾选要取消的进行中任务。");
       return;
     }
-    const ok = window.confirm(`确定取消选中的 ${selected.length} 条任务吗？\n\n如果任务已经提交聚联，只会停止 FullTextFlow 本地轮询和下载；聚联远端任务可能仍继续。`);
+    const ok = window.confirm(`确定取消选中的 ${rows.length} 条任务吗？\n\n如果任务已经提交聚联，只会停止 FullTextFlow 本地轮询和下载；聚联远端任务可能仍继续。`);
     if (!ok) return;
-    for (const row of selected) api.cancelOne(row.itemKey, row.libraryID);
+    for (const row of rows) {
+      api.cancelOne(row.itemKey, row.libraryID);
+      selected.delete(`${row.libraryID}:${row.itemKey}`);
+    }
     await refresh();
   }
 
@@ -194,7 +272,19 @@
     const ok = window.confirm("确定取消全部进行中的任务吗？\n\n已提交聚联的远端任务可能仍继续，但 FullTextFlow 将停止轮询和下载。");
     if (!ok) return;
     api.cancelAll();
+    selected.clear();
     await refresh();
+  }
+
+  function toggleSelectAll() {
+    const control = document.getElementById("select-all");
+    const shouldSelect = Boolean(control.checked);
+    for (const [key, row] of rowMap.entries()) {
+      if (terminal(row.state)) continue;
+      if (shouldSelect) selected.add(key);
+      else selected.delete(key);
+    }
+    refresh();
   }
 
   window.addEventListener("load", () => {
@@ -202,8 +292,9 @@
     document.getElementById("retry").addEventListener("command", e => busy(e.currentTarget, () => api.retryProblems()));
     document.getElementById("cancel-selected").addEventListener("command", () => cancelSelected());
     document.getElementById("cancel-all").addEventListener("command", () => cancelAll());
-    document.getElementById("clear-finished").addEventListener("command", async () => { api.clearFinished(); await refresh(); });
+    document.getElementById("clear-finished").addEventListener("command", async () => { api.clearFinished(); selected.clear(); await refresh(); });
     document.getElementById("close").addEventListener("command", () => window.close());
+    document.getElementById("select-all").addEventListener("change", () => toggleSelectAll());
     window.FullTextFlowTasks = { refresh };
     refresh();
     refreshTimer = window.setInterval(() => refresh(), 2000);
