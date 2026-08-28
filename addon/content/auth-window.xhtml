@@ -7,10 +7,11 @@
         orient="vertical">
   <vbox flex="1" style="padding:10px; gap:8px;">
     <description id="status" style="font-weight:600;">正在打开聚联登录页…</description>
-    <description>已保存账号时，FullTextFlow 会尝试自动填充并登录；如出现验证码/机构验证，请在下方网页中手动完成。登录成功后插件会自动捕获 token 并恢复等待任务。</description>
+    <description>FullTextFlow 会分别验证聚联网页会话和 API token。只有两者都有效时才显示“聚联登录成功”。如果旧 token 仍可调用 API、但个人中心已要求重新登录，插件会明确提示“网页会话已失效”，不会再出现假登录成功。</description>
+    <description>已保存账号时，FullTextFlow 会尝试自动填充并登录；如出现验证码/机构验证，请在下方网页中手动完成。</description>
     <hbox style="gap:8px;">
       <button id="autofill" label="自动填充并登录"/>
-      <button id="detect" label="检测登录状态"/>
+      <button id="detect" label="检测双重登录状态"/>
       <button id="reload" label="重新加载"/>
       <button id="external" label="在外部浏览器打开"/>
       <spacer flex="1"/>

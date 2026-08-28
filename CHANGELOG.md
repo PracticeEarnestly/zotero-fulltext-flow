@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.6 - 2026-08-28
+
+- Fixed false-positive JLSS login status when an old API token remained usable after the JLSS website session had expired.
+- Login state is now verified on two independent layers: API token validity and embedded JLSS web-session validity.
+- Only API + confirmed web session is displayed as **聚联登录成功**.
+- API-valid but web-session-unknown state is now shown as a warning instead of success.
+- Web-session-expired state is detected from login-route, password-field, and login/register page markers and prompts re-login even if the API token temporarily still works.
+- A still-valid API token is retained during web-session re-login so active background tasks are not interrupted unnecessarily.
+- Added both direct DOM and Gecko frame-script web-session probes for Zotero/Firefox process-isolation compatibility.
+- Added red/amber/green authentication status semantics and a dual-login detection button.
+- Added dedicated authentication/session documentation and privacy-safe issue templates.
+
 ## 0.2.5 - 2026-08-28
 
 - Replaced the legacy XUL `listbox/listheader/listcell` task view with a real HTML table embedded in the Zotero task window.
