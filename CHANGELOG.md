@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.5 - 2026-08-28
+
+- Replaced the legacy XUL `listbox/listheader/listcell` task view with a real HTML table embedded in the Zotero task window.
+- Added sticky table headers and reliable horizontal/vertical scrolling for wide task diagnostics.
+- Added explicit fixed column widths so DPI scaling and window resizing no longer cause XUL column overlap or unpredictable stretching.
+- Long fields such as article title and diagnostic explanation now wrap normally; status/time fields stay compact and non-wrapping.
+- Replaced fragile XUL multi-selection with per-row checkboxes plus a Select All checkbox.
+- Checkbox selection persists across the 2-second automatic task refresh.
+- Terminal tasks are not selectable for cancellation.
+- Added row highlighting for selected, warning, and cancelled tasks.
+- Added build-time XML parsing and JavaScript syntax checks for both FullTextFlow windows, in addition to the existing TypeScript/XPI build gate.
+
 ## 0.2.4 - 2026-08-28
 
 - Improved JLSS remote-task matching beyond exact submitted-text equality.
