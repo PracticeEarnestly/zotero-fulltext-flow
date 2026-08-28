@@ -1,6 +1,6 @@
 # FullTextFlow for Zotero
 
-**Current preview: 0.2.5**
+**Current preview: 0.2.7**
 
 **FullTextFlow** is a Zotero plugin for selectively completing missing full-text PDFs at the **Collection** level. It is intended for research libraries where only high-priority project folders need complete PDFs.
 
@@ -8,15 +8,17 @@ The initial Zotero–JLSS workflow design was informed by the open GitHub projec
 
 ## Core idea
 
-You choose which Zotero Collections deserve complete full text. FullTextFlow scans only those Collections, skips items that already have usable PDFs, asks Zotero's own **Find Full Text** machinery first, and uses JLSS / 聚联医疗 as a fallback when Zotero cannot obtain the file.
+You choose which Zotero Collections deserve complete full text. FullTextFlow scans only those Collections, skips items that already have usable PDFs, and follows the selected global retrieval strategy. Starting with 0.2.7, the default is **全部使用聚联**: items missing a usable local PDF are sent directly to JLSS, while Zotero-first and fallback modes remain available.
 
 ```text
 Selected Zotero Collection
   -> scan regular items
   -> skip usable local PDFs
-  -> Zotero Find Full Text
-       -> DOI / URL / OA / custom resolvers
-  -> if still missing: JLSS / 聚联医疗
+  -> apply selected retrieval strategy
+       -> default: JLSS / 聚联医疗 directly
+       -> optional: JLSS -> Zotero fallback
+       -> optional: Zotero -> JLSS fallback
+       -> optional: Zotero only
   -> persistent background queue
   -> remote task matching + diagnostics
   -> signed PDF download
@@ -31,8 +33,8 @@ Selected Zotero Collection
 - Optionally include all child Collections and deduplicate repeated items.
 - Detect and skip items that already have a usable local PDF.
 - Extract identifiers in this order: **DOI → PMID → title → URL**.
-- Try Zotero's built-in file resolvers first: DOI, URL, Open Access, and configured custom resolvers.
-- Fall back to JLSS / 聚联医疗 only when Zotero does not find a file.
+- Choose one of four global Zotero/JLSS retrieval strategies; **全部使用聚联** is the 0.2.7 default.
+- Keep Zotero-first, JLSS-first-with-Zotero-fallback, and Zotero-only modes available as alternatives.
 - Persist a local task queue and poll JLSS status in the background.
 - Match remote JLSS tasks using UUID/task code first, then DOI/PMID/query/title evidence and guarded title similarity.
 - Diagnose repeated remote-task mismatches instead of showing an unexplained generic pending state.
@@ -100,16 +102,15 @@ The strategy can be changed from either **Tools → FullTextFlow 全文获取策
 
 ## Retrieval order
 
-By default:
+The order depends on the selected strategy. With the 0.2.7 default (**全部使用聚联**):
 
-1. Existing local PDF → skip.
-2. Zotero Find Full Text → DOI / URL / OA / custom resolver.
-3. JLSS / 聚联医疗 fallback.
-4. Remote task diagnosis and polling.
-5. PDF verification.
-6. Attach to the original item.
+1. Existing usable local PDF → skip.
+2. Submit directly to JLSS / 聚联医疗.
+3. Remote task diagnosis and polling.
+4. Download and verify the returned PDF.
+5. Attach it to the original Zotero item.
 
-This reduces unnecessary JLSS requests and preserves your institution's delivery quota.
+Alternative modes can place Zotero Find Full Text before JLSS, use Zotero only, or use Zotero strictly as a fallback after a JLSS failure.
 
 ## JLSS task matching and pending diagnosis
 
@@ -208,7 +209,7 @@ Cancellation is a local FullTextFlow stop. If a request was already submitted to
 - JLSS integration is **unofficial**. Observed endpoints are not documented as a stable public API and can change.
 - Use FullTextFlow only within your institution's literature-delivery permissions, quotas, and applicable terms.
 
-## Current version: 0.2.5 Preview
+## Current version: 0.2.7 Preview
 
 Implemented:
 
