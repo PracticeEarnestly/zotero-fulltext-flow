@@ -46,13 +46,19 @@ export class PubMedWatcher {
     const item: any = Zotero.Items.get(id);
     if (!item?.isRegularItem?.()) return;
 
-    // No title-only matching in automatic mode. This avoids silently attaching a PMID
-    // to the wrong article when imported metadata are incomplete.
-    const doi = String(item.getField?.("DOI") || "").trim();
-    const extra = String(item.getField?.("extra") || "");
-    const pmid = extra.match(/(?:^|\n)\s*PMID\s*:\s*(\d+)/i)?.[1] || "";
-    const pmcid = extra.match(/(?:^|\n)\s*PMCID\s*:\s*(PMC\d+)/i)?.[1] || "";
-    if ((!doi && !pmid) || (pmid && pmcid)) return;
+    // No title-only matching in automatic mode. Native Zotero PMID/PMCID fields are
+    // authoritative; legacy Extra identifiers are only read so they can be migrated.
+    const doi = safeField(item, "DOI");
+    const nativePMID = safeField(item, "PMID");
+    const nativePMCID = safeField(item, "PMCID");
+    const extra = safeField(item, "extra");
+    const legacyPMID = extra.match(/(?:^|\n)\s*PMID\s*:\s*(\d+)/i)?.[1] || "";
+    const legacyPMCID = extra.match(/(?:^|\n)\s*PMCID\s*:\s*(PMC\d+)/i)?.[1] || "";
+    const pmid = nativePMID || legacyPMID;
+    const pmcid = nativePMCID || legacyPMCID;
+    const needsMigration = Boolean((pmid && !nativePMID) || (pmcid && !nativePMCID));
+
+    if ((!doi && !pmid) || (nativePMID && nativePMCID && !needsMigration)) return;
 
     this.processing.add(id);
     try {
@@ -66,4 +72,9 @@ export class PubMedWatcher {
       this.processing.delete(id);
     }
   }
+}
+
+function safeField(item: any, name: string): string {
+  try { return String(item.getField?.(name) || "").trim(); }
+  catch (_) { return ""; }
 }
