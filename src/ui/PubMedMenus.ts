@@ -1,5 +1,5 @@
 import { PLUGIN_NAME, PREF_PREFIX } from "../config";
-import { PubMedQA, type IdentifierCompletionResult, type MetadataValidationResult } from "../core/PubMedQA";
+import { PubMedQA, type IdentifierCompletionResult, type MetadataValidationResult, type MetadataReplacementPreview } from "../core/PubMedQA";
 
 export class PubMedMenus {
   private windows = new Set<any>();
@@ -17,6 +17,7 @@ export class PubMedMenus {
       "fulltextflow-pubmed-item-sep",
       "fulltextflow-pubmed-complete-ids",
       "fulltextflow-pubmed-validate",
+      "fulltextflow-pubmed-replace",
       "fulltextflow-pubmed-tools-auto",
       "fulltextflow-pubmed-tools-email"
     ]) doc.getElementById(id)?.remove();
@@ -42,7 +43,12 @@ export class PubMedMenus {
     validate.setAttribute("label", "FullTextFlow：PubMed 校验 metadata（不修改）");
     validate.addEventListener("command", () => void this.validateSelected(win));
 
-    popup.append(sep, complete, validate);
+    const replace = win.document.createXULElement("menuitem");
+    replace.id = "fulltextflow-pubmed-replace";
+    replace.setAttribute("label", "FullTextFlow：PubMed 校验并替换 metadata…");
+    replace.addEventListener("command", () => void this.replaceSelected(win));
+
+    popup.append(sep, complete, validate, replace);
   }
 
   private registerToolsMenu(win: any) {
@@ -94,7 +100,7 @@ export class PubMedMenus {
     Services.prompt.alert(
       win,
       PLUGIN_NAME,
-      `PubMed 标识符处理完成。\n新增/更新：${counts.updated || 0}\n无需修改：${counts.unchanged || 0}\n未找到：${counts.not_found || 0}\n冲突：${counts.conflict || 0}\n错误：${counts.error || 0}${details}`
+      `PubMed 标识符处理完成。\n新增/更新：${counts.updated || 0}\n无需修改：${counts.unchanged || 0}\n未找到：${counts.not_found || 0}\n冲突：${counts.conflict || 0}\n跳过：${counts.skipped || 0}\n错误：${counts.error || 0}${details}`
     );
   }
 
@@ -121,6 +127,78 @@ export class PubMedMenus {
       PLUGIN_NAME,
       `PubMed metadata 校验完成（未替换任何 metadata）。\n通过：${counts.verified || 0}\n冲突：${counts.conflict || 0}\n无 PubMed 记录：${counts.no_pubmed || 0}\n错误：${counts.error || 0}${details}`
     );
+  }
+
+  private async replaceSelected(win: any) {
+    const items = this.selectedItems(win);
+    if (!items.length) {
+      Services.prompt.alert(win, PLUGIN_NAME, "请先选择至少一个普通文献条目。");
+      return;
+    }
+
+    const counts: Record<string, number> = { updated: 0, unchanged: 0, skipped: 0, conflict: 0, no_pubmed: 0, error: 0 };
+    for (const item of items) {
+      const preview = await PubMedQA.prepareMetadataReplacement(item);
+      if (preview.status !== "ready") {
+        counts[preview.status] = (counts[preview.status] || 0) + 1;
+        continue;
+      }
+
+      const decision = this.confirmReplacement(win, preview);
+      if (decision === "skip") {
+        counts.skipped++;
+        continue;
+      }
+
+      const applied = await PubMedQA.applyMetadataReplacement(item, preview, decision === "with_authors");
+      counts[applied.status] = (counts[applied.status] || 0) + 1;
+    }
+
+    Services.prompt.alert(
+      win,
+      PLUGIN_NAME,
+      `PubMed metadata 替换完成。\n已更新：${counts.updated || 0}\n无需修改：${counts.unchanged || 0}\n人工跳过：${counts.skipped || 0}\n标识符冲突：${counts.conflict || 0}\n无 PubMed 记录：${counts.no_pubmed || 0}\n错误：${counts.error || 0}\n\n所有替换均经过逐条预览确认；附件、笔记、标签、Collection 与其他 Extra 内容不会被替换。`
+    );
+  }
+
+  private confirmReplacement(win: any, preview: MetadataReplacementPreview): "without_authors" | "with_authors" | "skip" {
+    const authorChange = preview.changes.some(x => x.field === "creators");
+    const lines = preview.changes.slice(0, 12).map(change =>
+      `• ${change.label}\n  Zotero: ${truncate(change.from || "∅", 110)}\n  PubMed: ${truncate(change.to || "∅", 110)}`
+    );
+    const more = preview.changes.length > 12 ? `\n…另有 ${preview.changes.length - 12} 项差异` : "";
+    const message = [
+      `条目：${truncate(preview.title, 120)}`,
+      `PMID：${preview.pmid}`,
+      "",
+      ...lines,
+      more,
+      "",
+      "确认后只替换上面显示的 bibliographic metadata。PMID/PMCID 使用 Zotero 原生字段；附件、笔记、标签、Collection 和无关 Extra 内容保持不变。"
+    ].filter(Boolean).join("\n");
+
+    if (!authorChange) {
+      return Services.prompt.confirm(win, "PubMed metadata 替换确认", `${message}\n\n是否替换？`) ? "without_authors" : "skip";
+    }
+
+    const ps = Services.prompt;
+    const flags = ps.BUTTON_POS_0 * ps.BUTTON_TITLE_IS_STRING
+      + ps.BUTTON_POS_1 * ps.BUTTON_TITLE_IS_STRING
+      + ps.BUTTON_POS_2 * ps.BUTTON_TITLE_IS_STRING;
+    const choice = ps.confirmEx(
+      win,
+      "PubMed metadata 替换确认",
+      `${message}\n\nPubMed 作者来自结构化 XML。你可以保留 Zotero 当前作者，或同时使用 PubMed 作者替换。`,
+      flags,
+      "替换（保留作者）",
+      "替换（含作者）",
+      "跳过",
+      null,
+      { value: false }
+    );
+    if (choice === 0) return "without_authors";
+    if (choice === 1) return "with_authors";
+    return "skip";
   }
 
   private autoEnabled(): boolean {
