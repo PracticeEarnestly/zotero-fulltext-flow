@@ -20,16 +20,37 @@ export type MetadataValidationResult = {
   message: string;
 };
 
+type IdentifierState = {
+  pmid: string;
+  pmcid: string;
+  nativePMID: string;
+  nativePMCID: string;
+  legacyPMID: string;
+  legacyPMCID: string;
+};
+
 export class PubMedQA {
   static async completeIdentifiers(item: any): Promise<IdentifierCompletionResult> {
     if (!item?.isRegularItem?.()) return result("skipped", "", "", [], "Not a regular Zotero item.");
+    if (!supportsNativeIdentifierFields(item)) {
+      return result("skipped", "", "", [], "This Zotero item type/version does not support native PMID/PMCID fields.");
+    }
 
     try {
       const doi = normalizePubMedDOI(pubMedField(item, "DOI"));
       const current = extractIdentifiers(item);
+
+      if (current.nativePMID && current.legacyPMID && current.nativePMID !== current.legacyPMID) {
+        await setConflictTag(item, true);
+        return result("conflict", current.nativePMID, current.nativePMCID, [], `Native PMID ${current.nativePMID} conflicts with legacy Extra PMID ${current.legacyPMID}.`);
+      }
+      if (current.nativePMCID && current.legacyPMCID && normalizePMCID(current.nativePMCID) !== normalizePMCID(current.legacyPMCID)) {
+        await setConflictTag(item, true);
+        return result("conflict", current.nativePMID, current.nativePMCID, [], `Native PMCID ${current.nativePMCID} conflicts with legacy Extra PMCID ${current.legacyPMCID}.`);
+      }
+
       let pmid = current.pmid;
       let pmcid = current.pmcid;
-      const added: string[] = [];
 
       // Automatic matching is deliberately conservative: DOI and an existing PMID are
       // accepted as strong identifiers; title-only searches are never used for auto-write.
@@ -39,10 +60,7 @@ export class PubMedQA {
           await setConflictTag(item, true);
           return result("conflict", pmid, pmcid, [], `Existing PMID ${pmid} conflicts with DOI-derived PMID ${doiPMID}.`);
         }
-        if (!pmid && doiPMID) {
-          pmid = doiPMID;
-          added.push("PMID");
-        }
+        if (!pmid && doiPMID) pmid = doiPMID;
       }
 
       if (!pmid) {
@@ -63,21 +81,37 @@ export class PubMedQA {
         await setConflictTag(item, true);
         return result("conflict", pmid, pmcid, [], `Existing PMCID ${pmcid} conflicts with NCBI-linked PMCID ${linked.pmcid}.`);
       }
-      if (!pmcid && linked.pmcid) {
-        pmcid = normalizePMCID(linked.pmcid);
+      if (!pmcid && linked.pmcid) pmcid = normalizePMCID(linked.pmcid);
+
+      const added: string[] = [];
+      let changed = false;
+      if (pmid && !current.nativePMID) {
+        item.setField("PMID", pmid);
+        added.push("PMID");
+        changed = true;
+      }
+      if (pmcid && !current.nativePMCID) {
+        item.setField("PMCID", normalizePMCID(pmcid));
         added.push("PMCID");
+        changed = true;
       }
 
-      if (added.length) {
-        const extra = appendMissingIdentifiers(pubMedField(item, "extra"), pmid, pmcid);
-        item.setField("extra", extra);
-        await setConflictTag(item, false, false);
+      // Zotero now has proper PMID/PMCID fields. If identical legacy lines remain in
+      // Extra, remove only those exact identifier lines while preserving all other Extra data.
+      const extra = pubMedField(item, "extra");
+      const cleanedExtra = removeMatchingLegacyIdentifiers(extra, pmid, pmcid);
+      if (cleanedExtra !== extra) {
+        item.setField("extra", cleanedExtra);
+        changed = true;
+      }
+
+      await setConflictTag(item, false, false);
+      if (changed) {
         await item.saveTx();
-        return result("updated", pmid, pmcid, added, `Added ${added.join(" + ")}.`);
+        return result("updated", pmid, pmcid, added, added.length ? `Stored ${added.join(" + ")} in Zotero native fields.` : "Migrated matching legacy PMID/PMCID lines out of Extra.");
       }
 
-      await setConflictTag(item, false);
-      return result("unchanged", pmid, pmcid, [], "PMID/PMCID are already complete or PMCID is not available in PMC.");
+      return result("unchanged", pmid, pmcid, [], "Native PMID/PMCID fields are already complete or PMCID is not available in PMC.");
     } catch (e) {
       return result("error", "", "", [], e instanceof Error ? e.message : String(e));
     }
@@ -128,22 +162,54 @@ function validation(status: MetadataValidationResult["status"], title: string, p
 }
 
 function pubMedField(item: any, name: string): string {
-  return String(item.getField?.(name) || "").trim();
+  try { return String(item.getField?.(name) || "").trim(); }
+  catch (_) { return ""; }
 }
 
-function extractIdentifiers(item: any): { pmid: string; pmcid: string } {
+function supportsNativeIdentifierFields(item: any): boolean {
+  try {
+    const pmidID = Zotero.ItemFields?.getID?.("PMID");
+    const pmcidID = Zotero.ItemFields?.getID?.("PMCID");
+    if (!pmidID || !pmcidID) return false;
+    return Boolean(
+      Zotero.ItemFields?.isValidForType?.(pmidID, item.itemTypeID)
+      && Zotero.ItemFields?.isValidForType?.(pmcidID, item.itemTypeID)
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+function extractIdentifiers(item: any): IdentifierState {
+  const nativePMID = pubMedField(item, "PMID");
+  const nativePMCID = normalizePMCID(pubMedField(item, "PMCID"));
   const extra = pubMedField(item, "extra");
-  const pmid = extra.match(/(?:^|\n)\s*PMID\s*:\s*(\d+)\s*(?:\n|$)/i)?.[1] || "";
-  const pmcid = extra.match(/(?:^|\n)\s*PMCID\s*:\s*(PMC\d+)\s*(?:\n|$)/i)?.[1] || "";
-  return { pmid, pmcid: normalizePMCID(pmcid) };
+  const legacyPMID = extra.match(/(?:^|\n)\s*PMID\s*:\s*(\d+)\s*(?:\n|$)/i)?.[1] || "";
+  const legacyPMCID = normalizePMCID(extra.match(/(?:^|\n)\s*PMCID\s*:\s*(PMC\d+)\s*(?:\n|$)/i)?.[1] || "");
+  return {
+    pmid: nativePMID || legacyPMID,
+    pmcid: nativePMCID || legacyPMCID,
+    nativePMID,
+    nativePMCID,
+    legacyPMID,
+    legacyPMCID
+  };
 }
 
-function appendMissingIdentifiers(extra: string, pmid: string, pmcid: string): string {
-  const lines = String(extra || "").replace(/\s+$/g, "").split("\n").filter((x, i, arr) => !(arr.length === 1 && i === 0 && !x));
-  const joined = lines.join("\n");
-  if (pmid && !/(?:^|\n)\s*PMID\s*:/i.test(joined)) lines.push(`PMID: ${pmid}`);
-  if (pmcid && !/(?:^|\n)\s*PMCID\s*:/i.test(joined)) lines.push(`PMCID: ${normalizePMCID(pmcid)}`);
-  return lines.join("\n").trim();
+function removeMatchingLegacyIdentifiers(extra: string, pmid: string, pmcid: string): string {
+  const wantedPMID = String(pmid || "").trim();
+  const wantedPMCID = normalizePMCID(pmcid);
+  return String(extra || "")
+    .split("\n")
+    .filter(line => {
+      const p = line.match(/^\s*PMID\s*:\s*(\d+)\s*$/i)?.[1] || "";
+      if (p && wantedPMID && p === wantedPMID) return false;
+      const pc = normalizePMCID(line.match(/^\s*PMCID\s*:\s*(PMC\d+)\s*$/i)?.[1] || "");
+      if (pc && wantedPMCID && pc === wantedPMCID) return false;
+      return true;
+    })
+    .join("\n")
+    .replace(/^\n+|\n+$/g, "");
 }
 
 function normalizePMCID(value: string): string {

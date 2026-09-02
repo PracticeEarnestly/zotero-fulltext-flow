@@ -11,17 +11,18 @@ export type ItemMetadata = {
 };
 
 function field(item: any, name: string): string {
-  return String(item.getField?.(name) || "").trim();
+  try { return String(item.getField?.(name) || "").trim(); }
+  catch (_) { return ""; }
 }
 
-function extractPMID(extra: string): string {
+function extractLegacyPMID(extra: string): string {
   const match = String(extra || "").match(/(?:^|\n)\s*PMID\s*:\s*(\d+)/i);
   return match?.[1] || "";
 }
 
 export function extractItemMetadata(item: any): ItemMetadata {
   const doi = field(item, "DOI");
-  const pmid = extractPMID(field(item, "extra"));
+  const pmid = field(item, "PMID") || extractLegacyPMID(field(item, "extra"));
   const title = field(item, "title");
   const url = field(item, "url");
   const queryText = doi || pmid || title || url;
