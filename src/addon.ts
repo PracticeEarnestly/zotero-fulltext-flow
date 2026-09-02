@@ -1,5 +1,6 @@
 import { FlowEngine } from "./core/FlowEngine";
 import { AutoWatcher } from "./core/AutoWatcher";
+import { PubMedWatcher } from "./core/PubMedWatcher";
 import { Menus } from "./ui/Menus";
 import { AuthManager } from "./core/AuthManager";
 
@@ -7,6 +8,7 @@ export class FullTextFlowAddon {
   data = { initialized: false };
   engine = new FlowEngine();
   watcher = new AutoWatcher(this.engine);
+  pubmedWatcher = new PubMedWatcher();
   menus = new Menus(this.engine);
 
   hooks = {
@@ -16,6 +18,7 @@ export class FullTextFlowAddon {
       for (const win of Zotero.getMainWindows()) this.menus.register(win);
       this.engine.start();
       this.watcher.start();
+      this.pubmedWatcher.start();
       this.data.initialized = true;
       Zotero.debug("FullTextFlow initialized");
     },
@@ -24,6 +27,7 @@ export class FullTextFlowAddon {
     onShutdown: async () => {
       this.engine.stop();
       this.watcher.stop();
+      this.pubmedWatcher.stop();
       this.menus.unregisterAll();
       this.data.initialized = false;
       delete (Zotero as any).FullTextFlow;
