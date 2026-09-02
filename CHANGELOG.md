@@ -1,16 +1,25 @@
 # Changelog
 
+## 0.2.9 - 2026-09-02
+
+- Corrected PMID/PMCID storage for current Zotero schema: Journal Article items now use Zotero's native `PMID` and `PMCID` fields instead of creating new identifier lines in `Extra`.
+- Native fields are authoritative; legacy `PMID:` / `PMCID:` lines in `Extra` are read only for backward-compatible migration.
+- When a legacy Extra identifier exactly matches the native identifier being used, only that matching legacy line is removed while all unrelated Extra content is preserved.
+- If native and legacy identifiers disagree, no automatic migration or overwrite occurs and the item receives `pubmed-id-conflict`.
+- FullTextFlow's general metadata extractor now prefers the native PMID field and falls back to legacy Extra only for older records.
+- PubMed metadata validation remains read-only for title, creators, journal, date, volume, issue, pages/article number, and DOI.
+
 ## 0.2.8 - 2026-09-02
 
 - Added a Zotero 9 PubMed metadata QA module using official NCBI services.
 - Added default-on automatic PMID/PMCID completion for newly added or modified regular items.
 - Automatic identifier writes are conservative: DOI or an existing PMID are required; title-only fuzzy matching is never used for writes.
-- PMID and PMCID are stored as `PMID:` / `PMCID:` lines in Zotero `Extra`, preserving existing Extra content.
+- Initial preview stored PMID/PMCID as legacy `Extra` lines; this is corrected in 0.2.9 to use Zotero native fields.
 - Added DOI → PMID lookup through PubMed E-utilities and PMID → PMCID linkage through the PMC ID Converter.
 - Added identifier conflict protection: existing DOI/PMID/PMCID values are never silently overwritten when NCBI returns a conflicting mapping; conflicts receive the `pubmed-id-conflict` tag.
 - Added right-click **补全 PMID/PMCID** for manual batch completion.
 - Added right-click **PubMed 校验 metadata（不修改）** to compare title, DOI, year, volume, issue, pages/article number, journal, and first author with PubMed.
-- Metadata validation is read-only in 0.2.8; no title, creator, journal, date, volume, issue, pages, or DOI field is replaced.
+- Metadata validation is read-only; no title, creator, journal, date, volume, issue, pages, or DOI field is replaced.
 - Added `pubmed-metadata-verified` and `pubmed-metadata-conflict` validation tags.
 - Added a Tools toggle for automatic identifier completion and an optional NCBI contact-email preference.
 - Serialized and throttled NCBI requests to remain below the default unauthenticated request rate.
