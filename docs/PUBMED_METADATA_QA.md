@@ -1,6 +1,6 @@
 # PubMed Metadata QA
 
-FullTextFlow 0.3.0 provides PubMed/PMC identifier QA, read-only metadata validation, and an explicit review-and-replace workflow for current Zotero versions, including Zotero 9.
+FullTextFlow 0.3.1 provides PubMed/PMC identifier QA, read-only metadata validation, explicit review-and-replace, and Zotero-safe PubMed title normalization for current Zotero versions, including Zotero 9.
 
 ## Safety boundary
 
@@ -30,6 +30,32 @@ Automatic writes are conservative:
 - Existing PMID → PMCID uses the NCBI PMC ID Converter.
 - PMCID absence is normal and is not treated as an error.
 - Title-only/fuzzy matching is never used for automatic identifier writes.
+
+## PubMed title normalization
+
+PubMed ESummary commonly exposes article titles with a final citation period. That punctuation should not be stored as ordinary Zotero title metadata because the citation style is responsible for bibliography punctuation.
+
+Starting with 0.3.1, FullTextFlow:
+
+- prefers PubMed EFetch XML `ArticleTitle` as the title source;
+- decodes markup/entities and normalizes whitespace;
+- removes a final ordinary period before comparison or replacement;
+- preserves terminal `?` and `!`;
+- preserves periods that are likely part of a true terminal abbreviation, such as `U.S.`, `U.K.`, `e.g.`, `i.e.`, `et al.`, `vs.`, and `etc.`;
+- uses the same normalized title for both read-only validation and confirmed replacement.
+
+Examples:
+
+```text
+PubMed:  Microplastics and cardiovascular events.
+Zotero:  Microplastics and cardiovascular events
+
+PubMed:  Is exposure associated with inflammation?
+Zotero:  Is exposure associated with inflammation?
+
+PubMed:  Trends in the U.S.
+Zotero:  Trends in the U.S.
+```
 
 ## Read-only metadata validation
 
@@ -93,7 +119,7 @@ After a confirmed write, the item receives `pubmed-metadata-updated`. Previous v
 The module uses official NCBI services:
 
 - PubMed E-utilities for DOI → PMID lookup and summary metadata;
-- PubMed EFetch XML for structured authors;
+- PubMed EFetch XML for normalized `ArticleTitle` and structured authors;
 - PMC ID Converter for PMID ↔ PMCID linkage when the article is available in PMC.
 
 Requests are serialized and throttled below the default unauthenticated NCBI request rate. An optional NCBI contact email can be configured from:

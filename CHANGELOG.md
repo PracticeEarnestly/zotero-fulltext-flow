@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.1 - 2026-09-02
+
+- Changed PubMed title handling to prefer EFetch XML `ArticleTitle` over ESummary display title when available.
+- Added Zotero-safe title normalization before both validation and replacement.
+- Removed ordinary terminal citation periods from PubMed titles so Zotero stores the title itself and CSL controls bibliography punctuation.
+- Preserved terminal question marks and exclamation marks.
+- Preserved periods that are likely part of true terminal abbreviations such as `U.S.`, `U.K.`, `e.g.`, `i.e.`, `et al.`, `vs.`, and `etc.`.
+- Reused the same PubMed XML request for structured authors and the preferred article title.
+
+## 0.3.0 - 2026-09-02
+
+- Added **PubMed 校验并替换 metadata…** as an explicit, per-item confirmation workflow.
+- Added field-level Zotero → PubMed difference preview before any bibliographic metadata write.
+- Added confirmed replacement for title, journal title, journal abbreviation, publication date, volume, issue, pages/article number, and DOI.
+- Added structured PubMed XML author retrieval and explicit choices to replace metadata while keeping Zotero authors or to replace metadata including authors.
+- Preserved non-author creators, attachments, notes, tags, Collection membership, and unrelated Extra content.
+- Kept the existing **PubMed 校验 metadata（不修改）** workflow read-only and kept background metadata replacement disabled.
+
 ## 0.2.9 - 2026-09-02
 
 - Corrected PMID/PMCID storage for current Zotero schema: Journal Article items now use Zotero's native `PMID` and `PMCID` fields instead of creating new identifier lines in `Extra`.
