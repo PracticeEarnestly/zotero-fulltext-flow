@@ -1,28 +1,22 @@
 # PubMed Metadata QA
 
-FullTextFlow 0.2.9 adds a conservative PubMed/PMC metadata-quality module for current Zotero versions, including Zotero 9.
+FullTextFlow 0.3.0 provides PubMed/PMC identifier QA, read-only metadata validation, and an explicit review-and-replace workflow for current Zotero versions, including Zotero 9.
 
 ## Safety boundary
 
-The module has two different permissions:
+The module has three distinct modes:
 
 1. **PMID / PMCID identifiers may be added automatically when missing.** They are stored in Zotero's native `PMID` and `PMCID` fields for Journal Article items.
-2. **All other bibliographic metadata are read-only in 0.2.9.** Title, authors, journal, date, volume, issue, pages/article number, and DOI are compared with PubMed but are never replaced automatically.
+2. **PubMed metadata validation remains read-only.** The existing validation command never replaces bibliographic metadata.
+3. **Metadata replacement is manual and confirmation-gated.** Every item shows field-level Zotero → PubMed differences before any write occurs.
 
 An existing PMID, PMCID, or DOI is never silently overwritten when NCBI returns a conflicting identifier. The item is tagged `pubmed-id-conflict` instead.
 
 ## Native Zotero fields
 
-Current Zotero schema provides proper `PMID` and `PMCID` fields for `journalArticle` items. FullTextFlow therefore writes new identifiers directly to those native fields:
+Current Zotero schema provides proper `PMID` and `PMCID` fields for `journalArticle` items. FullTextFlow writes new identifiers directly to those native fields and does **not** create new `PMID:` or `PMCID:` lines in `Extra`.
 
-```text
-PMID  = 12345678
-PMCID = PMC1234567
-```
-
-FullTextFlow does **not** create new `PMID:` or `PMCID:` lines in `Extra`.
-
-For backward compatibility, existing legacy lines in `Extra` can still be read as a migration source. If a legacy value exactly matches the native value being used, FullTextFlow removes only that matching identifier line from `Extra` and preserves all unrelated Extra content. If native and legacy values disagree, no automatic migration occurs and the item is tagged `pubmed-id-conflict`.
+For backward compatibility, legacy identifier lines in `Extra` can still be read as a migration source. Matching legacy lines are removed only after the same value is present in the native field; unrelated Extra content is preserved. Native/legacy conflicts are never overwritten automatically.
 
 ## Automatic identifier completion
 
@@ -30,25 +24,12 @@ Automatic PMID/PMCID completion is enabled by default and can be toggled from:
 
 **Tools → FullTextFlow 自动补 PMID/PMCID**
 
-The automatic watcher is deliberately conservative:
+Automatic writes are conservative:
 
-- DOI → PubMed PMID uses an exact PubMed article-identifier search.
+- DOI → PMID uses an exact PubMed article-identifier search.
 - Existing PMID → PMCID uses the NCBI PMC ID Converter.
 - PMCID absence is normal and is not treated as an error.
-- Title-only or fuzzy matching is never used for automatic writes.
-- Native Zotero `PMID` / `PMCID` fields are authoritative.
-- Legacy `Extra` identifiers are only read for migration/compatibility.
-- If DOI, native fields, legacy Extra identifiers, or NCBI mappings conflict, no identifier is overwritten and the item receives `pubmed-id-conflict`.
-
-A short delay is used after Zotero item add/modify notifications so importers can finish writing metadata before PubMed lookup begins.
-
-## Manual identifier completion
-
-Select one or more regular Zotero items and use:
-
-**Right click → FullTextFlow：补全 PMID/PMCID**
-
-The command reports updated, unchanged, not-found, conflict, skipped, and error counts.
+- Title-only/fuzzy matching is never used for automatic identifier writes.
 
 ## Read-only metadata validation
 
@@ -56,37 +37,65 @@ Select one or more regular Zotero items and use:
 
 **Right click → FullTextFlow：PubMed 校验 metadata（不修改）**
 
-The validator compares the Zotero record with PubMed and never replaces bibliographic metadata in this version.
-
-Strong-conflict checks currently include:
-
-- title;
-- DOI;
-- publication year;
-- volume.
-
-Issue, pages/article number, journal title, and first-author differences are reported as review information but are not by themselves treated as strong conflicts because database formatting differs across publishers and PubMed.
+The validator compares title, DOI, publication year, volume, issue, pages/article number, journal title, and first author. It never replaces bibliographic metadata.
 
 Validation tags:
 
 - `pubmed-metadata-verified`
 - `pubmed-metadata-conflict`
 
-These tags record the current validation state. They do not mean that PubMed metadata were copied into Zotero.
+## Confirmed metadata replacement
+
+Select one or more regular Zotero items and use:
+
+**Right click → FullTextFlow：PubMed 校验并替换 metadata…**
+
+For each item, FullTextFlow first retrieves the PubMed record and previews the exact differences. No replacement occurs until the user confirms that specific item.
+
+Eligible replacement fields are:
+
+- title;
+- journal title;
+- journal abbreviation;
+- publication date when PubMed is more informative or the year conflicts;
+- volume;
+- issue;
+- pages/article number;
+- DOI.
+
+PMID and PMCID remain managed by the native identifier QA flow rather than the general metadata replacement operation.
+
+### Authors
+
+Structured author data are retrieved from PubMed XML using `LastName`, `ForeName`, `Initials`, and `CollectiveName` rather than splitting display strings.
+
+When the PubMed author list differs from Zotero, the confirmation dialog offers two choices:
+
+- **替换（保留作者）** — replace the other confirmed fields but leave Zotero authors unchanged;
+- **替换（含作者）** — also replace author creators using structured PubMed data.
+
+Non-author creator roles are preserved.
+
+### Data that are never replaced
+
+The metadata replacement action does not replace or delete:
+
+- attachments/PDFs;
+- notes;
+- tags;
+- Collection membership;
+- unrelated `Extra` content.
+
+After a confirmed write, the item receives `pubmed-metadata-updated`. Previous validation tags are cleared because they may be stale until the next validation run.
 
 ## NCBI API use
 
 The module uses official NCBI services:
 
-- PubMed E-utilities for DOI → PMID lookup and PubMed summaries;
+- PubMed E-utilities for DOI → PMID lookup and summary metadata;
+- PubMed EFetch XML for structured authors;
 - PMC ID Converter for PMID ↔ PMCID linkage when the article is available in PMC.
 
-Requests are serialized and throttled to stay below the default unauthenticated NCBI request rate. NCBI recommends that API clients identify a maintainer email. It can be configured from:
+Requests are serialized and throttled below the default unauthenticated NCBI request rate. An optional NCBI contact email can be configured from:
 
 **Tools → FullTextFlow NCBI 联系邮箱**
-
-The email is used only as an NCBI API query parameter.
-
-## Future write mode
-
-A future version may offer a separate **review-and-apply** workflow for replacing bibliographic metadata from PubMed. That mode is intentionally not enabled in 0.2.9. Any future write mode should show field-level differences and require explicit confirmation before modifying title, creators, journal, dates, volume, issue, pages, or DOI.
