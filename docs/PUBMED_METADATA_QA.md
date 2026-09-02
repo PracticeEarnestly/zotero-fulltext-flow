@@ -1,26 +1,28 @@
 # PubMed Metadata QA
 
-FullTextFlow 0.2.8 adds a conservative PubMed/PMC metadata-quality module for Zotero 9.
+FullTextFlow 0.2.9 adds a conservative PubMed/PMC metadata-quality module for current Zotero versions, including Zotero 9.
 
 ## Safety boundary
 
 The module has two different permissions:
 
-1. **PMID / PMCID identifiers may be added automatically when missing.**
-2. **All other bibliographic metadata are read-only in 0.2.8.** Title, authors, journal, date, volume, issue, pages/article number, and DOI are compared with PubMed but are never replaced automatically.
+1. **PMID / PMCID identifiers may be added automatically when missing.** They are stored in Zotero's native `PMID` and `PMCID` fields for Journal Article items.
+2. **All other bibliographic metadata are read-only in 0.2.9.** Title, authors, journal, date, volume, issue, pages/article number, and DOI are compared with PubMed but are never replaced automatically.
 
 An existing PMID, PMCID, or DOI is never silently overwritten when NCBI returns a conflicting identifier. The item is tagged `pubmed-id-conflict` instead.
 
-## Why PMID and PMCID are stored in Extra
+## Native Zotero fields
 
-Current Zotero documentation treats PMID and PMCID as CSL variables that should be stored in the `Extra` field rather than as formally supported native bibliographic fields. FullTextFlow therefore writes:
+Current Zotero schema provides proper `PMID` and `PMCID` fields for `journalArticle` items. FullTextFlow therefore writes new identifiers directly to those native fields:
 
 ```text
-PMID: 12345678
-PMCID: PMC1234567
+PMID  = 12345678
+PMCID = PMC1234567
 ```
 
-Existing `Extra` content is preserved.
+FullTextFlow does **not** create new `PMID:` or `PMCID:` lines in `Extra`.
+
+For backward compatibility, existing legacy lines in `Extra` can still be read as a migration source. If a legacy value exactly matches the native value being used, FullTextFlow removes only that matching identifier line from `Extra` and preserves all unrelated Extra content. If native and legacy values disagree, no automatic migration occurs and the item is tagged `pubmed-id-conflict`.
 
 ## Automatic identifier completion
 
@@ -34,7 +36,9 @@ The automatic watcher is deliberately conservative:
 - Existing PMID → PMCID uses the NCBI PMC ID Converter.
 - PMCID absence is normal and is not treated as an error.
 - Title-only or fuzzy matching is never used for automatic writes.
-- If DOI and an existing PMID resolve to different PubMed records, no identifier is overwritten and the item receives `pubmed-id-conflict`.
+- Native Zotero `PMID` / `PMCID` fields are authoritative.
+- Legacy `Extra` identifiers are only read for migration/compatibility.
+- If DOI, native fields, legacy Extra identifiers, or NCBI mappings conflict, no identifier is overwritten and the item receives `pubmed-id-conflict`.
 
 A short delay is used after Zotero item add/modify notifications so importers can finish writing metadata before PubMed lookup begins.
 
@@ -44,7 +48,7 @@ Select one or more regular Zotero items and use:
 
 **Right click → FullTextFlow：补全 PMID/PMCID**
 
-The command reports updated, unchanged, not-found, conflict, and error counts.
+The command reports updated, unchanged, not-found, conflict, skipped, and error counts.
 
 ## Read-only metadata validation
 
@@ -85,4 +89,4 @@ The email is used only as an NCBI API query parameter.
 
 ## Future write mode
 
-A future version may offer a separate **review-and-apply** workflow for replacing metadata from PubMed. That mode is intentionally not enabled in 0.2.8. Any future write mode should show field-level differences and require explicit confirmation before modifying title, creators, journal, dates, volume, issue, pages, or DOI.
+A future version may offer a separate **review-and-apply** workflow for replacing bibliographic metadata from PubMed. That mode is intentionally not enabled in 0.2.9. Any future write mode should show field-level differences and require explicit confirmation before modifying title, creators, journal, dates, volume, issue, pages, or DOI.
