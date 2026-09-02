@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.8 - 2026-09-02
+
+- Added a Zotero 9 PubMed metadata QA module using official NCBI services.
+- Added default-on automatic PMID/PMCID completion for newly added or modified regular items.
+- Automatic identifier writes are conservative: DOI or an existing PMID are required; title-only fuzzy matching is never used for writes.
+- PMID and PMCID are stored as `PMID:` / `PMCID:` lines in Zotero `Extra`, preserving existing Extra content.
+- Added DOI → PMID lookup through PubMed E-utilities and PMID → PMCID linkage through the PMC ID Converter.
+- Added identifier conflict protection: existing DOI/PMID/PMCID values are never silently overwritten when NCBI returns a conflicting mapping; conflicts receive the `pubmed-id-conflict` tag.
+- Added right-click **补全 PMID/PMCID** for manual batch completion.
+- Added right-click **PubMed 校验 metadata（不修改）** to compare title, DOI, year, volume, issue, pages/article number, journal, and first author with PubMed.
+- Metadata validation is read-only in 0.2.8; no title, creator, journal, date, volume, issue, pages, or DOI field is replaced.
+- Added `pubmed-metadata-verified` and `pubmed-metadata-conflict` validation tags.
+- Added a Tools toggle for automatic identifier completion and an optional NCBI contact-email preference.
+- Serialized and throttled NCBI requests to remain below the default unauthenticated request rate.
+
 ## 0.2.7 - 2026-08-28
 
 - Added a global four-mode full-text retrieval strategy shared by manual Collection runs, recursive runs, item-context actions, automatic Collection fetching, and retries.
@@ -29,7 +44,7 @@
 - Replaced the legacy XUL `listbox/listheader/listcell` task view with a real HTML table embedded in the Zotero task window.
 - Added sticky table headers and reliable horizontal/vertical scrolling for wide task diagnostics.
 - Added explicit fixed column widths so DPI scaling and window resizing no longer cause XUL column overlap or unpredictable stretching.
-- Long fields such as article title and diagnostic explanation now wrap normally; status/time fields stay compact and non-wrapping.
+- Long fields such as article title and diagnostics now wrap normally; status/time fields stay compact and non-wrapping.
 - Replaced fragile XUL multi-selection with per-row checkboxes plus a Select All checkbox.
 - Checkbox selection persists across the 2-second automatic task refresh.
 - Terminal tasks are not selectable for cancellation.
