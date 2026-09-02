@@ -6,3 +6,5 @@ pref("extensions.zotero.fullTextFlow.retrievalStrategy", "jlss_only");
 pref("extensions.zotero.fullTextFlow.queue", "[]");
 pref("extensions.zotero.fullTextFlow.autoCollections", "[]");
 pref("extensions.zotero.fullTextFlow.authMode", "browser-assisted");
+pref("extensions.zotero.fullTextFlow.pubmedAutoIdentifiers", true);
+pref("extensions.zotero.fullTextFlow.ncbiEmail", "");
