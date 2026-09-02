@@ -28,6 +28,11 @@ export type PubMedIdentifiers = {
   doi: string;
 };
 
+type PubMedXMLRecord = {
+  title: string;
+  structuredAuthors: PubMedAuthor[];
+};
+
 export class PubMedClient {
   private static requestChain: Promise<unknown> = Promise.resolve();
   private static lastRequestAt = 0;
@@ -98,16 +103,19 @@ export class PubMedClient {
     const data = await this.json(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?${params.toString()}&${this.ncbiParams()}`);
     const row = data?.result?.[clean];
     if (!row || row.error) return null;
+
     const articleIDs = Array.isArray(row.articleids) ? row.articleids : [];
     const doi = articleIDs.find((x: any) => String(x?.idtype || "").toLowerCase() === "doi")?.value || "";
     const pubDate = String(row.pubdate || row.epubdate || "").trim();
     const year = pubDate.match(/\b(18|19|20|21)\d{2}\b/)?.[0] || "";
-    const structuredAuthors = await this.fetchStructuredAuthors(clean);
+    const xmlRecord = await this.fetchXMLRecord(clean);
+    const summaryTitle = decodeHTML(String(row.title || ""));
+
     return {
       pmid: clean,
-      title: decodeHTML(String(row.title || "")),
+      title: normalizePubMedArticleTitle(xmlRecord.title || summaryTitle),
       authors: Array.isArray(row.authors) ? row.authors.map((x: any) => String(x?.name || "")).filter(Boolean) : [],
-      structuredAuthors,
+      structuredAuthors: xmlRecord.structuredAuthors,
       journal: String(row.fulljournalname || ""),
       journalAbbr: String(row.source || ""),
       year,
@@ -119,26 +127,42 @@ export class PubMedClient {
     };
   }
 
-  private static async fetchStructuredAuthors(pmid: string): Promise<PubMedAuthor[]> {
+  private static async fetchXMLRecord(pmid: string): Promise<PubMedXMLRecord> {
     const params = new URLSearchParams({ db: "pubmed", id: pmid, retmode: "xml" });
     const xml = await this.text(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?${params.toString()}&${this.ncbiParams()}`, "application/xml,text/xml");
     try {
       const doc = new DOMParser().parseFromString(xml, "application/xml");
-      const nodes = Array.from(doc.querySelectorAll("PubmedArticle Article AuthorList > Author"));
-      return nodes.map((node: any) => ({
+      const article = doc.querySelector("PubmedArticle MedlineCitation Article");
+      const title = String(article?.querySelector("ArticleTitle")?.textContent || "").replace(/\s+/g, " ").trim();
+      const nodes = Array.from(article?.querySelectorAll("AuthorList > Author") || []);
+      const structuredAuthors = nodes.map((node: any) => ({
         lastName: String(node.querySelector("LastName")?.textContent || "").trim(),
         firstName: String(node.querySelector("ForeName")?.textContent || "").trim(),
         initials: String(node.querySelector("Initials")?.textContent || "").trim(),
         collectiveName: String(node.querySelector("CollectiveName")?.textContent || "").trim()
       })).filter((x: PubMedAuthor) => x.lastName || x.collectiveName);
+      return { title, structuredAuthors };
     } catch (_) {
-      return [];
+      return { title: "", structuredAuthors: [] };
     }
   }
 }
 
 export function normalizePubMedDOI(value: string): string {
   return String(value || "").trim().replace(/^https?:\/\/(dx\.)?doi\.org\//i, "").replace(/^doi\s*:\s*/i, "").trim().toLowerCase();
+}
+
+export function normalizePubMedArticleTitle(value: string): string {
+  const title = decodeHTML(String(value || "")).replace(/\s+/g, " ").trim();
+  if (!title.endsWith(".")) return title;
+
+  // PubMed/NLM title strings commonly carry a terminal citation period. Zotero's
+  // title field should contain the title itself and let CSL add bibliography punctuation.
+  // Keep periods that are very likely part of a terminal abbreviation.
+  if (/(?:^|\s)(?:[A-Za-z]\.){2,}$/.test(title)) return title; // e.g. U.S., U.K.
+  if (/(?:\be\.g\.|\bi\.e\.|\bet al\.|\bvs\.|\betc\.)$/i.test(title)) return title;
+
+  return title.slice(0, -1).trimEnd();
 }
 
 function decodeHTML(value: string): string {
