@@ -1,4 +1,4 @@
-import { PubMedClient, normalizeDOI, type PubMedSummary } from "./PubMedClient";
+import { PubMedClient, normalizePubMedDOI, type PubMedSummary } from "./PubMedClient";
 
 const TAG_ID_CONFLICT = "pubmed-id-conflict";
 const TAG_METADATA_VERIFIED = "pubmed-metadata-verified";
@@ -25,7 +25,7 @@ export class PubMedQA {
     if (!item?.isRegularItem?.()) return result("skipped", "", "", [], "Not a regular Zotero item.");
 
     try {
-      const doi = normalizeDOI(field(item, "DOI"));
+      const doi = normalizePubMedDOI(pubMedField(item, "DOI"));
       const current = extractIdentifiers(item);
       let pmid = current.pmid;
       let pmcid = current.pmcid;
@@ -55,7 +55,7 @@ export class PubMedQA {
         await setConflictTag(item, true);
         return result("conflict", pmid, pmcid, [], `PMID ${pmid} conflicts with the PMC ID-converter result ${linked.pmid}.`);
       }
-      if (doi && linked.doi && normalizeDOI(linked.doi) !== doi) {
+      if (doi && linked.doi && normalizePubMedDOI(linked.doi) !== doi) {
         await setConflictTag(item, true);
         return result("conflict", pmid, pmcid, [], `DOI ${doi} conflicts with the DOI linked by NCBI (${linked.doi}).`);
       }
@@ -69,7 +69,7 @@ export class PubMedQA {
       }
 
       if (added.length) {
-        const extra = appendMissingIdentifiers(field(item, "extra"), pmid, pmcid);
+        const extra = appendMissingIdentifiers(pubMedField(item, "extra"), pmid, pmcid);
         item.setField("extra", extra);
         await setConflictTag(item, false, false);
         await item.saveTx();
@@ -84,7 +84,7 @@ export class PubMedQA {
   }
 
   static async validateMetadata(item: any): Promise<MetadataValidationResult> {
-    const title = field(item, "title");
+    const title = pubMedField(item, "title");
     if (!item?.isRegularItem?.()) return validation("skipped", title, "", [], "Not a regular Zotero item.");
 
     try {
@@ -127,12 +127,12 @@ function validation(status: MetadataValidationResult["status"], title: string, p
   return { status, title, pmid, differences, message };
 }
 
-function field(item: any, name: string): string {
+function pubMedField(item: any, name: string): string {
   return String(item.getField?.(name) || "").trim();
 }
 
 function extractIdentifiers(item: any): { pmid: string; pmcid: string } {
-  const extra = field(item, "extra");
+  const extra = pubMedField(item, "extra");
   const pmid = extra.match(/(?:^|\n)\s*PMID\s*:\s*(\d+)\s*(?:\n|$)/i)?.[1] || "";
   const pmcid = extra.match(/(?:^|\n)\s*PMCID\s*:\s*(PMC\d+)\s*(?:\n|$)/i)?.[1] || "";
   return { pmid, pmcid: normalizePMCID(pmcid) };
@@ -178,25 +178,25 @@ function compareMetadata(item: any, pubmed: PubMedSummary): { strongConflict: bo
     if (strong) strongConflict = true;
   };
 
-  const zTitle = field(item, "title");
+  const zTitle = pubMedField(item, "title");
   if (zTitle && pubmed.title && titleSimilarity(zTitle, pubmed.title) < 0.88) push("Title", zTitle, pubmed.title, true);
 
-  const zDOI = normalizeDOI(field(item, "DOI"));
+  const zDOI = normalizePubMedDOI(pubMedField(item, "DOI"));
   if (zDOI && pubmed.doi && zDOI !== pubmed.doi) push("DOI", zDOI, pubmed.doi, true);
 
-  const zYear = field(item, "date").match(/\b(18|19|20|21)\d{2}\b/)?.[0] || "";
+  const zYear = pubMedField(item, "date").match(/\b(18|19|20|21)\d{2}\b/)?.[0] || "";
   if (zYear && pubmed.year && zYear !== pubmed.year) push("Year", zYear, pubmed.year, true);
 
-  const zVolume = field(item, "volume");
+  const zVolume = pubMedField(item, "volume");
   if (zVolume && pubmed.volume && normalizeSimple(zVolume) !== normalizeSimple(pubmed.volume)) push("Volume", zVolume, pubmed.volume, true);
 
-  const zIssue = field(item, "issue");
+  const zIssue = pubMedField(item, "issue");
   if (zIssue && pubmed.issue && normalizeSimple(zIssue) !== normalizeSimple(pubmed.issue)) push("Issue", zIssue, pubmed.issue, false);
 
-  const zPages = field(item, "pages");
+  const zPages = pubMedField(item, "pages");
   if (zPages && pubmed.pages && normalizePages(zPages) !== normalizePages(pubmed.pages)) push("Pages/article number", zPages, pubmed.pages, false);
 
-  const zJournal = field(item, "publicationTitle");
+  const zJournal = pubMedField(item, "publicationTitle");
   if (zJournal && pubmed.journal && journalSimilarity(zJournal, pubmed.journal) < 0.75) push("Journal", zJournal, pubmed.journal, false);
 
   const creators = item.getCreators?.() || [];
