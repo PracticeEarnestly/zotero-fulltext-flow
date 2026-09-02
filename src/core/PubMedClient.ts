@@ -55,7 +55,7 @@ export class PubMedClient {
   }
 
   static async findPMIDByDOI(doi: string): Promise<string> {
-    const clean = normalizeDOI(doi);
+    const clean = normalizePubMedDOI(doi);
     if (!clean) return "";
     const params = new URLSearchParams({
       db: "pubmed",
@@ -81,7 +81,7 @@ export class PubMedClient {
     return {
       pmid: record.pmid ? String(record.pmid) : "",
       pmcid: record.pmcid ? String(record.pmcid).toUpperCase() : "",
-      doi: record.doi ? normalizeDOI(String(record.doi)) : ""
+      doi: record.doi ? normalizePubMedDOI(String(record.doi)) : ""
     };
   }
 
@@ -107,12 +107,12 @@ export class PubMedClient {
       volume: String(row.volume || ""),
       issue: String(row.issue || ""),
       pages: String(row.pages || row.elocationid || ""),
-      doi: normalizeDOI(String(doi || ""))
+      doi: normalizePubMedDOI(String(doi || ""))
     };
   }
 }
 
-export function normalizeDOI(value: string): string {
+export function normalizePubMedDOI(value: string): string {
   return String(value || "")
     .trim()
     .replace(/^https?:\/\/(dx\.)?doi\.org\//i, "")
