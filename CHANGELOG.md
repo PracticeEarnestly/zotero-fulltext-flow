@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.8 - 2026-10-15
+
+- Collection right-click runs now keep only the pre-run task preview and confirmation dialog.
+- Removed the second post-enqueue summary dialog. Progress, result counts, and diagnostics remain available in **FullTextFlow 任务管理**.
+- A required JLSS login window still opens when authentication is needed.
+
 ## 0.2.7 - 2026-08-28
 
 - Added a global four-mode full-text retrieval strategy shared by manual Collection runs, recursive runs, item-context actions, automatic Collection fetching, and retries.
