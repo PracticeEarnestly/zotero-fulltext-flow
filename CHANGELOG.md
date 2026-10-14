@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 - 2026-10-15
+
+- Merged **任务概览** into **FullTextFlow 任务中心**.
+- The task-center header refreshes every two seconds and shows retrieval strategy, JLSS token and automatic-login status, active task count, and all queue-state counts.
+- Removed the separate Tools → FullTextFlow 任务概览 menu item. Collection actions now open “查看任务中心”.
+
+
 ## 0.2.9 - 2026-10-15
 
 - Added a Zotero JSON update manifest (update.json) to every release.
