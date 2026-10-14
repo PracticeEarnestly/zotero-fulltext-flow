@@ -232,4 +232,9 @@ ${option.description}`);
     }
   }
 
+  private prefBool(name: string, fallback: boolean) {
+    const value = Zotero.Prefs.get(name);
+    return value === undefined || value === null ? fallback : Boolean(value);
+  }
+
 }
