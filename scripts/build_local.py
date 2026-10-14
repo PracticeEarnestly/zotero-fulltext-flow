@@ -110,8 +110,31 @@ def main():
                 z.write(path, path.relative_to(BUILD).as_posix())
     digest = hashlib.sha256(out.read_bytes()).hexdigest()
     (ROOT / f"fulltextflow-{pkg['version']}.xpi.sha256").write_text(f"{digest}  {out.name}\n")
+
+    zotero_versions = json.loads(manifest)["applications"]["zotero"]
+    update_manifest = {
+        "addons": {
+            cfg["addonID"]: {
+                "updates": [{
+                    "version": pkg["version"],
+                    "update_link": f"https://github.com/PracticeEarnestly/zotero-fulltext-flow/releases/download/v{pkg['version']}/{out.name}",
+                    "update_hash": f"sha256:{digest}",
+                    "applications": {
+                        "zotero": {
+                            "strict_min_version": zotero_versions["strict_min_version"],
+                            "strict_max_version": zotero_versions["strict_max_version"],
+                        }
+                    },
+                }]
+            }
+        }
+    }
+    update_path = ROOT / "update.json"
+    update_path.write_text(json.dumps(update_manifest, indent=2) + "\n")
+    json.loads(update_path.read_text())
     print(out)
     print(digest)
+    print(update_path)
 
 if __name__ == "__main__":
     main()

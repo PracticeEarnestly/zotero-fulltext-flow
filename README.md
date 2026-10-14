@@ -1,6 +1,6 @@
 # FullTextFlow for Zotero
 
-**Current preview: 0.2.8**
+**Current preview: 0.2.9**
 
 **FullTextFlow** is a Zotero plugin for selectively completing missing full-text PDFs at the **Collection** level. It is intended for research libraries where only high-priority project folders need complete PDFs.
 
@@ -8,7 +8,7 @@ The initial Zotero–JLSS workflow design was informed by the open GitHub projec
 
 ## Core idea
 
-You choose which Zotero Collections deserve complete full text. FullTextFlow scans only those Collections, skips items that already have usable PDFs, and follows the selected global retrieval strategy. Starting with 0.2.8, the default is **全部使用聚联**: items missing a usable local PDF are sent directly to JLSS, while Zotero-first and fallback modes remain available.
+You choose which Zotero Collections deserve complete full text. FullTextFlow scans only those Collections, skips items that already have usable PDFs, and follows the selected global retrieval strategy. Starting with 0.2.9, the default is **全部使用聚联**: items missing a usable local PDF are sent directly to JLSS, while Zotero-first and fallback modes remain available.
 
 ```text
 Selected Zotero Collection
@@ -34,7 +34,7 @@ Selected Zotero Collection
 - Optionally include all child Collections and deduplicate repeated items.
 - Detect and skip items that already have a usable local PDF.
 - Extract identifiers in this order: **DOI → PMID → title → URL**.
-- Choose one of four global Zotero/JLSS retrieval strategies; **全部使用聚联** is the 0.2.8 default.
+- Choose one of four global Zotero/JLSS retrieval strategies; **全部使用聚联** is the 0.2.9 default.
 - Keep Zotero-first, JLSS-first-with-Zotero-fallback, and Zotero-only modes available as alternatives.
 - Persist a local task queue and poll JLSS status in the background.
 - Match remote JLSS tasks using UUID/task code first, then DOI/PMID/query/title evidence and guarded title similarity.
@@ -90,7 +90,7 @@ Items that already have a usable local PDF are skipped.
 
 ## Full-text retrieval strategy
 
-Starting with **0.2.8**, FullTextFlow uses a global retrieval strategy shared by manual Collection runs, recursive runs, item-context actions, automatic Collection fetching, and retries.
+Starting with **0.2.9**, FullTextFlow uses a global retrieval strategy shared by manual Collection runs, recursive runs, item-context actions, automatic Collection fetching, and retries.
 
 Available modes:
 
@@ -103,7 +103,7 @@ The strategy can be changed from either **Tools → FullTextFlow 全文获取策
 
 ## Retrieval order
 
-The order depends on the selected strategy. With the 0.2.8 default (**全部使用聚联**):
+The order depends on the selected strategy. With the 0.2.9 default (**全部使用聚联**):
 
 1. Existing usable local PDF → skip.
 2. Submit directly to JLSS / 聚联医疗.
@@ -210,7 +210,7 @@ Cancellation is a local FullTextFlow stop. If a request was already submitted to
 - JLSS integration is **unofficial**. Observed endpoints are not documented as a stable public API and can change.
 - Use FullTextFlow only within your institution's literature-delivery permissions, quotas, and applicable terms.
 
-## Current version: 0.2.8 Preview
+## Current version: 0.2.9 Preview
 
 Implemented:
 

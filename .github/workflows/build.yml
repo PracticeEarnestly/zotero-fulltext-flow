@@ -29,6 +29,7 @@ jobs:
           path: |
             fulltextflow-*.xpi
             fulltextflow-*.xpi.sha256
+            update.json
       - name: Read release version
         id: release_version
         run: |
@@ -62,3 +63,4 @@ jobs:
           files: |
             fulltextflow-*.xpi
             fulltextflow-*.xpi.sha256
+            update.json
