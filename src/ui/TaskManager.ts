@@ -1,5 +1,7 @@
 import { PLUGIN_NAME, PREF_PREFIX } from "../config";
 import { QueueStore } from "../core/QueueStore";
+import { AuthManager } from "../core/AuthManager";
+import { retrievalStrategyLabel } from "../core/RetrievalStrategy";
 import type { FlowEngine } from "../core/FlowEngine";
 
 export class TaskManager {
@@ -15,6 +17,13 @@ export class TaskManager {
       pluginName: PLUGIN_NAME,
       pollMinutes: Math.max(1, Number(Zotero.Prefs.get(`${PREF_PREFIX}.pollMinutes`) || 5)),
       pendingWarnHours: Math.max(1, Number(Zotero.Prefs.get(`${PREF_PREFIX}.pendingWarnHours`) || 24)),
+      getOverview: async () => ({
+        strategyLabel: retrievalStrategyLabel(),
+        hasToken: await AuthManager.hasToken(),
+        hasCredentials: await AuthManager.hasCredentials(),
+        active: QueueStore.active().length,
+        counts: QueueStore.countByState()
+      }),
       getRows: () => QueueStore.load().map(e => ({
         itemKey: e.itemKey,
         libraryID: e.libraryID,
