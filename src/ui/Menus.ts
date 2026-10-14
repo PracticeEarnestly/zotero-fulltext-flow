@@ -175,11 +175,8 @@ ${option.description}`);
     if (!scan.missingPDF.length) { Services.prompt.alert(win, PLUGIN_NAME, `${summary}\n\n没有需要补齐的全文。`); return; }
     if (!Services.prompt.confirm(win, PLUGIN_NAME, `${summary}\n\n开始查找全文吗？`)) return;
     const result = await this.engine.enqueueMetadata(scan.missingPDF);
-    Services.prompt.alert(
-      win,
-      PLUGIN_NAME,
-      `获取策略：${strategyLabel}\n处理完成：Zotero 获取 ${result.native} 篇；提交聚联 ${result.queued} 篇；等待登录 ${result.waitingAuth} 篇；跳过 ${result.skipped} 篇；失败 ${result.failed} 篇。\n聚联任务会在后台自动检查。`
-    );
+    // The pre-run confirmation above is the only dialog for a Collection task.
+    // Follow progress and final counts in FullTextFlow 任务管理.
     if (result.waitingAuth) await AuthWindow.open(win, this.engine);
   }
 
