@@ -200,6 +200,9 @@
 
   async function refresh() {
     const rows = api?.getRows?.() || [];
+    let overview = null;
+    try { overview = await api?.getOverview?.(); }
+    catch (_) {}
     rowMap = new Map(rows.map(row => [keyOf(row), row]));
     for (const key of Array.from(selected)) {
       if (!rowMap.has(key)) selected.delete(key);
@@ -225,24 +228,32 @@
       for (const row of rows.slice().reverse()) body.appendChild(renderRow(row));
     }
 
-    const activeCount = rows.filter(r => !terminal(r.state)).length;
-    const summaryParts = [
+    const activeCount = Number(overview?.active ?? rows.filter(r => !terminal(r.state)).length);
+    const overviewParts = [
+      `获取策略：${overview?.strategyLabel || "未读取"}`,
+      `聚联 Token：${overview?.hasToken ? "已保存" : "未登录"}`,
+      `自动登录凭证：${overview?.hasCredentials ? "已保存" : "未设置"}`,
+      `活动任务：${activeCount}`,
+      `刷新：${new Date().toLocaleTimeString()}`
+    ];
+    document.getElementById("summary").textContent = overviewParts.join(" · ");
+
+    const stateParts = [
       `总计 ${rows.length}`,
-      `进行中 ${activeCount}`,
+      `等待提交 ${counts.queued || 0}`,
+      `Zotero 查找 ${counts.native_search || 0}`,
+      `等待登录 ${counts.waiting_auth || 0}`,
+      `已提交 ${counts.submitted || 0}`,
+      `远端处理中 ${counts.pending || 0}`,
+      `下载/核验 ${counts.downloading || 0}`,
       `完成 ${counts.done || 0}`,
       `需复核 ${counts.review || 0}`,
       `失败 ${counts.failed || 0}`,
       `已取消 ${counts.cancelled || 0}`
     ];
-    if (warningCount) summaryParts.push(`⚠ 需关注 ${warningCount}`);
-    document.getElementById("summary").textContent = summaryParts.join(" · ");
-
-    const detailParts = ["native_search", "queued", "submitted", "pending", "downloading", "waiting_auth"]
-      .filter(k => counts[k])
-      .map(k => `${labels[k]} ${counts[k]}`);
-    document.getElementById("active-summary").textContent = detailParts.length
-      ? `当前：${detailParts.join(" · ")}。远端处理中超过 ${api.pendingWarnHours || 24} 小时会提示核对，但不会自动判定失败。`
-      : "当前没有进行中的任务。";
+    if (warningCount) stateParts.push(`⚠ 需关注 ${warningCount}`);
+    document.getElementById("active-summary").textContent =
+      `${stateParts.join(" · ")}。远端处理中超过 ${api.pendingWarnHours || 24} 小时会提示核对，但不会自动判定失败。`;
 
     updateSelectAllState();
   }

@@ -1,10 +1,14 @@
 # FullTextFlow for Zotero
 
-**Current preview: 0.2.9**
+**Current preview: 0.3.0**
 
 **FullTextFlow** is a Zotero plugin for selectively completing missing full-text PDFs at the **Collection** level. It is intended for research libraries where only high-priority project folders need complete PDFs.
 
 The initial Zotero–JLSS workflow design was informed by the open GitHub project **[HiYvri/pdf-fetcher](https://github.com/HiYvri/pdf-fetcher)**, which demonstrated a practical Zotero → 聚联/JLSS → PDF attachment workflow. FullTextFlow is independently maintained and extends that idea with Collection-scoped execution, Zotero-native retrieval first, persistent queues, browser-assisted authentication, PDF verification, task diagnostics, cancellation controls, a stable task-table UI, and GitHub CI.
+
+## Task center
+
+Starting with 0.3.0, **FullTextFlow 任务中心** combines the former task overview and task manager. Its header refreshes every two seconds and shows the current retrieval strategy, JLSS login state, automatic-login credential state, active task count, and every queue state. The separate “任务概览” menu item has been removed.
 
 ## Core idea
 
