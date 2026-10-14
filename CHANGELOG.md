@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.9 - 2026-10-15
+
+- Added a Zotero JSON update manifest (update.json) to every release.
+- The manifest includes the versioned XPI URL, SHA-256 update hash, and tested Zotero version range, enabling automatic update checks.
+- Release automation now uploads the XPI, its SHA-256 file, and update.json together.
+
 ## 0.2.8 - 2026-10-15
 
 - Collection right-click runs now keep only the pre-run task preview and confirmation dialog.
