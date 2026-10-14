@@ -31,7 +31,16 @@ jobs:
             fulltextflow-*.xpi.sha256
       - name: Read release version
         id: release_version
-        run: echo "value=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "value=$(node -e 'console.log(require("./package.json").version)')" >> "$GITHUB_OUTPUT"
+      - name: Remove the erroneous empty-tag release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete v --yes --cleanup-tag --repo "$GITHUB_REPOSITORY"
+          fi
       - name: Check whether this version is already released
         id: release_check
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
