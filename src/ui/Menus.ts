@@ -1,6 +1,5 @@
 import { PLUGIN_NAME, PREF_PREFIX } from "../config";
 import { CollectionScanner } from "../core/CollectionScanner";
-import { QueueStore } from "../core/QueueStore";
 import type { FlowEngine } from "../core/FlowEngine";
 import { JLSSClient } from "../core/JLSSClient";
 import { AuthManager } from "../core/AuthManager";
@@ -31,7 +30,7 @@ export class Menus {
       "fulltextflow-item", "fulltextflow-item-sep",
       "fulltextflow-collection-root", "fulltextflow-collection-sep",
       "fulltextflow-tools-settings", "fulltextflow-tools-login", "fulltextflow-tools-token",
-      "fulltextflow-tools-status", "fulltextflow-tools-tasks", "fulltextflow-tools-strategy"
+      "fulltextflow-tools-tasks", "fulltextflow-tools-strategy"
     ]) doc.getElementById(id)?.remove();
     this.windows.delete(win);
   }
@@ -72,7 +71,7 @@ export class Menus {
     auto.addEventListener("command", () => this.toggleAuto(win));
     const strategy = this.strategyMenu(win, "全文获取策略", "fulltextflow-collection-strategy");
     const login = this.menuItem(win, "聚联登录/刷新登录", () => AuthWindow.open(win, this.engine));
-    const tasks = this.menuItem(win, "查看任务", () => TaskManager.open(win, this.engine));
+    const tasks = this.menuItem(win, "查看任务中心", () => TaskManager.open(win, this.engine));
     const poll = this.menuItem(win, "立即检查聚联任务", async () => { await this.engine.poll(); TaskManager.open(win, this.engine); });
     menupopup.append(current, recursive, auto, strategy, login, tasks, poll);
     root.append(menupopup);
@@ -102,11 +101,9 @@ export class Menus {
     const token = this.menuItem(win, "FullTextFlow 手动 Token（备用）", () => this.manualToken(win));
     token.id = "fulltextflow-tools-token";
     const strategy = this.strategyMenu(win, "FullTextFlow 全文获取策略", "fulltextflow-tools-strategy");
-    const tasks = this.menuItem(win, "FullTextFlow 任务管理", () => TaskManager.open(win, this.engine));
+    const tasks = this.menuItem(win, "FullTextFlow 任务中心", () => TaskManager.open(win, this.engine));
     tasks.id = "fulltextflow-tools-tasks";
-    const status = this.menuItem(win, "FullTextFlow 任务概览", () => this.showStatus(win));
-    status.id = "fulltextflow-tools-status";
-    popup.append(login, settings, token, strategy, tasks, status);
+    popup.append(login, settings, token, strategy, tasks);
   }
 
   private strategyMenu(win: any, label: string, id: string) {
@@ -235,22 +232,4 @@ ${option.description}`);
     }
   }
 
-  private async showStatus(win: any) {
-    const counts = QueueStore.countByState();
-    const active = QueueStore.active().length;
-    const hasToken = await AuthManager.hasToken();
-    const hasCredentials = await AuthManager.hasCredentials();
-    const strategyLabel = retrievalStrategyLabel();
-    const lines = Object.entries(counts).map(([k,v]) => `${k}: ${v}`);
-    Services.prompt.alert(
-      win,
-      PLUGIN_NAME,
-      `全文获取策略：${strategyLabel}\n聚联 token：${hasToken ? "已保存" : "未登录"}\n自动登录凭证：${hasCredentials ? "已保存" : "未设置"}\n当前活动任务：${active}\n\n${lines.join("\n") || "暂无任务"}`
-    );
-  }
-
-  private prefBool(name: string, fallback: boolean) {
-    const value = Zotero.Prefs.get(name);
-    return value === undefined || value === null ? fallback : Boolean(value);
-  }
 }
