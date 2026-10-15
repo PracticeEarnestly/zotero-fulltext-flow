@@ -30,7 +30,18 @@ export class CollectionScanner {
   }
 
   static async scan(collection: any, recursive: boolean): Promise<ScanResult> {
-    const items = await this.collectItems(collection, recursive);
+    return this.scanCollections([collection], recursive);
+  }
+
+  static async scanCollections(collections: any[], recursive: boolean): Promise<ScanResult> {
+    const itemMap = new Map<string, any>();
+    for (const collection of collections) {
+      for (const item of await this.collectItems(collection, recursive)) {
+        itemMap.set(`${item.libraryID}:${item.key || item.id}`, item);
+      }
+    }
+
+    const items = Array.from(itemMap.values());
     const result: ScanResult = { total: items.length, regular: 0, withPDF: 0, missingPDF: [], noIdentifier: 0 };
     for (const item of items) {
       if (!item?.isRegularItem?.()) continue;
