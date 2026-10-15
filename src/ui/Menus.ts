@@ -78,13 +78,19 @@ export class Menus {
     popup.append(sep, root);
 
     const handler: EventListener = () => {
-      const collection = this.selectedCollection(win);
-      const usable = Boolean(collection?.key && collection?.libraryID);
+      const collections = this.selectedCollections(win);
+      const usable = collections.length > 0;
       root.toggleAttribute("hidden", !usable);
       sep.toggleAttribute("hidden", !usable);
       if (!usable) return;
-      const key = `${collection.libraryID}:${collection.key}`;
-      auto.setAttribute("checked", this.autoList().includes(key) ? "true" : "false");
+
+      const keys = collections.map(collection => `${collection.libraryID}:${collection.key}`);
+      const enabledCount = keys.filter(key => this.autoList().includes(key)).length;
+      auto.setAttribute("label", collections.length === 1 ? "自动补全文此分类" : `自动补全文已选 ${collections.length} 个分类`);
+      auto.setAttribute("checked", enabledCount === keys.length ? "true" : "false");
+      auto.setAttribute("tooltiptext", enabledCount > 0 && enabledCount < keys.length
+        ? "所选分类的自动补全文状态不一致；点击将全部启用。"
+        : "");
     };
     popup.addEventListener("popupshowing", handler);
     this.collectionPopupHandlers.set(win, handler);
@@ -146,20 +152,35 @@ ${option.description}`);
     return item;
   }
 
-  private selectedCollection(win: any): any {
-    return win.ZoteroPane?.getSelectedCollection?.() || win.ZoteroPane?.collectionsView?.getSelectedCollection?.() || null;
+  private selectedCollections(win: any): any[] {
+    const pane = win.ZoteroPane;
+    if (typeof pane?.getSelectedCollections === "function") {
+      return (pane.getSelectedCollections() || []).filter((collection: any) => collection?.key && collection?.libraryID);
+    }
+    if (typeof pane?.collectionsView?.getSelectedCollections === "function") {
+      return (pane.collectionsView.getSelectedCollections() || []).filter((collection: any) => collection?.key && collection?.libraryID);
+    }
+
+    // Zotero 7–9 compatibility: singular getters are removed in Zotero 10.
+    try {
+      const collection = pane?.getSelectedCollection?.() || pane?.collectionsView?.getSelectedCollection?.() || null;
+      return collection?.key && collection?.libraryID ? [collection] : [];
+    }
+    catch (_) {
+      return [];
+    }
   }
 
   private async scanAndSubmit(win: any, recursive: boolean) {
-    const collection = this.selectedCollection(win);
-    if (!collection) throw new Error("请先在左侧选择一个普通分类文件夹（Collection）。");
-    const scan = await CollectionScanner.scan(collection, recursive);
+    const collections = this.selectedCollections(win);
+    if (!collections.length) throw new Error("请先在左侧选择至少一个普通分类文件夹（Collection）。");
+    const scan = await CollectionScanner.scanCollections(collections, recursive);
     const maxBatch = Number(Zotero.Prefs.get(`${PREF_PREFIX}.maxBatch`) || 50);
     const submitCount = Math.min(scan.missingPDF.length, maxBatch);
     const strategy = getRetrievalStrategy();
     const strategyLabel = retrievalStrategyLabel(strategy);
     const summary = [
-      `分类：${collection.name || "未命名"}`,
+      `分类：${collections.length === 1 ? (collections[0].name || "未命名") : `已选 ${collections.length} 个分类`}`,
       `范围：${recursive ? "本分类 + 全部子分类" : "仅本分类"}`,
       `条目总数：${scan.total}`,
       `普通文献：${scan.regular}`,
@@ -183,14 +204,24 @@ ${option.description}`);
   }
 
   private toggleAuto(win: any) {
-    const collection = this.selectedCollection(win);
-    if (!collection) throw new Error("请先选择分类文件夹。");
-    const key = `${collection.libraryID}:${collection.key}`;
+    const collections = this.selectedCollections(win);
+    if (!collections.length) throw new Error("请先选择至少一个分类文件夹。");
+    const keys = collections.map(collection => `${collection.libraryID}:${collection.key}`);
     const list = this.autoList();
-    const idx = list.indexOf(key);
-    if (idx >= 0) list.splice(idx, 1); else list.push(key);
-    Zotero.Prefs.set(`${PREF_PREFIX}.autoCollections`, JSON.stringify(list));
-    Services.prompt.alert(win, PLUGIN_NAME, idx >= 0 ? `已关闭“${collection.name}”自动补全文。` : `已启用“${collection.name}”自动补全文。新加入该分类的文献会自动处理。`);
+    const allEnabled = keys.every(key => list.includes(key));
+    const next = allEnabled
+      ? list.filter(key => !keys.includes(key))
+      : Array.from(new Set([...list, ...keys]));
+    Zotero.Prefs.set(`${PREF_PREFIX}.autoCollections`, JSON.stringify(next));
+
+    const scope = collections.length === 1 ? `“${collections[0].name}”` : `所选 ${collections.length} 个分类`;
+    Services.prompt.alert(
+      win,
+      PLUGIN_NAME,
+      allEnabled
+        ? `已关闭${scope}自动补全文。`
+        : `已启用${scope}自动补全文。新加入这些分类的文献会自动处理。`
+    );
   }
 
   private async configureCredentials(win: any) {
