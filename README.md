@@ -1,6 +1,6 @@
 # FullTextFlow for Zotero
 
-**Current preview: 0.3.0**
+**Current preview: 0.3.1**
 
 **FullTextFlow** is a Zotero plugin for selectively completing missing full-text PDFs at the **Collection** level. It is intended for research libraries where only high-priority project folders need complete PDFs.
 
@@ -9,6 +9,8 @@ The initial Zotero–JLSS workflow design was informed by the open GitHub projec
 ## Task center
 
 Starting with 0.3.0, **FullTextFlow 任务中心** combines the former task overview and task manager. Its header refreshes every two seconds and shows the current retrieval strategy, JLSS login state, automatic-login credential state, active task count, and every queue state. The separate “任务概览” menu item has been removed.
+
+**Zotero compatibility:** version 0.3.1 supports Zotero 7–10. On Zotero 10, Collection actions use the plural selection API and can safely process one or more selected Collections without relying on removed single-selection getters.
 
 ## Core idea
 
@@ -74,12 +76,12 @@ Fallback: **Tools → FullTextFlow 手动 Token（备用）**. Account password 
 
 ## Collection menu
 
-Right-click a normal Zotero Collection:
+Right-click one or more normal Zotero Collections:
 
 - **补齐本分类缺失全文** — scan only the selected Collection.
 - **补齐本分类及子分类缺失全文** — recursively scan child Collections and deduplicate items.
-- **自动补全文此分类** — checkbox for automatic processing of newly added items directly belonging to this Collection.
-- **查看任务** — open the task manager.
+- **自动补全文此分类** — checkbox for automatic processing of newly added items directly belonging to this Collection. With multiple selected Collections, the menu applies the same setting to all selected Collections.
+- **查看任务中心** — open the unified task center.
 - **立即检查聚联任务** — trigger an immediate JLSS status refresh.
 
 Automatic mode is intentionally **Collection-specific**. Enabling it on a parent Collection does not silently enable every child Collection.
@@ -160,7 +162,7 @@ A structurally invalid file is removed automatically. A structurally valid but u
 
 ## Task manager
 
-Open **Tools → FullTextFlow 任务管理** or **Collection → FullTextFlow → 查看任务**.
+Open **Tools → FullTextFlow 任务中心** or **Collection → FullTextFlow → 查看任务中心**.
 
 Starting with **0.2.5**, the legacy XUL list has been replaced by a real HTML table embedded in the Zotero window. This is intended to avoid column overlap and width instability across Zotero versions, DPI scaling, and different window sizes.
 
@@ -214,7 +216,7 @@ Cancellation is a local FullTextFlow stop. If a request was already submitted to
 - JLSS integration is **unofficial**. Observed endpoints are not documented as a stable public API and can change.
 - Use FullTextFlow only within your institution's literature-delivery permissions, quotas, and applicable terms.
 
-## Current version: 0.2.9 Preview
+## Current version: 0.3.1 Preview
 
 Implemented:
 

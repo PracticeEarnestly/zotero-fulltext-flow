@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 - 2026-10-15
+
+- Added Zotero 10 compatibility: the XPI manifest and automatic-update manifest now declare `strict_max_version: 10.0.*`.
+- Replaced the removed single-Collection getter with the Zotero 10 plural selection API, while retaining Zotero 7–9 fallback behavior.
+- Collection actions and automatic full-text setting now safely support one or more selected Collections, with cross-Collection item deduplication.
+
+
 ## 0.3.0 - 2026-10-15
 
 - Merged **任务概览** into **FullTextFlow 任务中心**.
