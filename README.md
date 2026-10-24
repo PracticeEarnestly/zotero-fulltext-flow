@@ -10,7 +10,7 @@ The initial Zotero–JLSS workflow design was informed by the open GitHub projec
 
 Starting with 0.3.0, **FullTextFlow 任务中心** combines the former task overview and task manager. Its header refreshes every two seconds and shows the current retrieval strategy, JLSS login state, automatic-login credential state, active task count, and every queue state. The separate “任务概览” menu item has been removed.
 
-**Zotero compatibility:** version 0.3.1 supports Zotero 7–10. On Zotero 10, Collection actions use the plural selection API and can safely process one or more selected Collections without relying on removed single-selection getters.
+**Zotero compatibility:** version 0.3.3 supports Zotero 7–10. On Zotero 10, Collection actions use the plural selection API and can safely process one or more selected Collections without relying on removed single-selection getters.
 
 ## Core idea
 
@@ -216,7 +216,7 @@ Cancellation is a local FullTextFlow stop. If a request was already submitted to
 - JLSS integration is **unofficial**. Observed endpoints are not documented as a stable public API and can change.
 - Use FullTextFlow only within your institution's literature-delivery permissions, quotas, and applicable terms.
 
-## Current version: 0.3.1 Preview
+## Current version: 0.3.3 Preview
 
 Implemented:
 

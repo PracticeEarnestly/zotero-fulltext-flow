@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3 - 2026-10-25
+
+- Require typing `清理` before completed/failed/cancelled task records are removed, so dismissing or accidentally accepting a native dialog cannot clear task history.
+
 ## 0.3.2 - 2026-10-25
 
 - Fixed failed tasks being impossible to remove from the local task center.

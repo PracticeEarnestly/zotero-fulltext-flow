@@ -307,11 +307,13 @@
       `失败 ${counts.failed || 0}`,
       `已取消 ${counts.cancelled || 0}`
     ].join("，");
-    const ok = window.confirm(
+    const confirmation = window.prompt(
       `确定从 FullTextFlow 本地任务列表中清理 ${rows.length} 条记录吗？\n\n${summary}。` +
-      "\n\n此操作不会删除 Zotero 中已有的 PDF，也不会取消聚联远端任务；需复核记录将保留。"
+      "\n\n此操作不会删除 Zotero 中已有的 PDF，也不会取消聚联远端任务；需复核记录将保留。" +
+      "\n\n请输入“清理”两个字后再确认：",
+      ""
     );
-    if (!ok) return;
+    if (String(confirmation || "").trim() !== "清理") return;
 
     api.clearFinished();
     selected.clear();
