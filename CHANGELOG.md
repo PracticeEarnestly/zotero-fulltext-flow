@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 - 2026-10-25
+
+- Fixed failed tasks being impossible to remove from the local task center.
+- Expanded terminal-record cleanup to include completed, failed, and cancelled tasks while preserving review records.
+- Added a confirmation summary explaining that cleanup does not delete Zotero PDFs or cancel JLSS remote tasks.
+- Added queue-state regression tests for terminal, clearable, review, and active states.
+
 ## 0.3.1 - 2026-10-15
 
 - Added Zotero 10 compatibility: the XPI manifest and automatic-update manifest now declare `strict_max_version: 10.0.*`.

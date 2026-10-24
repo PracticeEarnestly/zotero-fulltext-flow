@@ -57,6 +57,10 @@
     return ["done", "review", "failed", "cancelled"].includes(state);
   }
 
+  function clearable(state) {
+    return ["done", "failed", "cancelled"].includes(state);
+  }
+
   function shortTime(value) {
     if (!value) return "";
     try { return new Date(value).toLocaleString(); }
@@ -287,6 +291,33 @@
     await refresh();
   }
 
+  async function clearFinished() {
+    const rows = Array.from(rowMap.values()).filter(row => clearable(row.state));
+    if (!rows.length) {
+      window.alert("没有已完成、失败或已取消的任务可清理。");
+      return;
+    }
+
+    const counts = rows.reduce((result, row) => {
+      result[row.state] = (result[row.state] || 0) + 1;
+      return result;
+    }, {});
+    const summary = [
+      `已完成 ${counts.done || 0}`,
+      `失败 ${counts.failed || 0}`,
+      `已取消 ${counts.cancelled || 0}`
+    ].join("，");
+    const ok = window.confirm(
+      `确定从 FullTextFlow 本地任务列表中清理 ${rows.length} 条记录吗？\n\n${summary}。` +
+      "\n\n此操作不会删除 Zotero 中已有的 PDF，也不会取消聚联远端任务；需复核记录将保留。"
+    );
+    if (!ok) return;
+
+    api.clearFinished();
+    selected.clear();
+    await refresh();
+  }
+
   function toggleSelectAll() {
     const control = document.getElementById("select-all");
     const shouldSelect = Boolean(control.checked);
@@ -303,7 +334,7 @@
     document.getElementById("retry").addEventListener("command", e => busy(e.currentTarget, () => api.retryProblems()));
     document.getElementById("cancel-selected").addEventListener("command", () => cancelSelected());
     document.getElementById("cancel-all").addEventListener("command", () => cancelAll());
-    document.getElementById("clear-finished").addEventListener("command", async () => { api.clearFinished(); selected.clear(); await refresh(); });
+    document.getElementById("clear-finished").addEventListener("command", () => clearFinished());
     document.getElementById("close").addEventListener("command", () => window.close());
     document.getElementById("select-all").addEventListener("change", () => toggleSelectAll());
     window.FullTextFlowTasks = { refresh };

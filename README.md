@@ -200,7 +200,7 @@ Actions:
 - **重试失败/需复核**;
 - **取消选中任务** — select using the first-column checkboxes;
 - **取消全部进行中**;
-- **清理已完成/已取消**.
+- **清理已完成/失败/已取消** — 清除本地终止记录，但保留需复核记录和 Zotero 中已有的 PDF.
 
 Cancellation is a local FullTextFlow stop. If a request was already submitted to JLSS, the remote JLSS task may continue, but FullTextFlow will no longer poll or download it.
 

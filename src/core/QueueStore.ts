@@ -2,18 +2,8 @@ import { PREF_PREFIX } from "../config";
 import type { ItemMetadata } from "./Metadata";
 import type { VerificationStatus } from "./PdfVerifier";
 import type { RetrievalStrategy } from "./RetrievalStrategy";
-
-export type QueueState =
-  | "queued"
-  | "native_search"
-  | "waiting_auth"
-  | "submitted"
-  | "pending"
-  | "downloading"
-  | "done"
-  | "review"
-  | "failed"
-  | "cancelled";
+import { isClearableState, isTerminalState } from "./QueueStates";
+import type { QueueState } from "./QueueStates";
 
 export type QueueSource = "zotero" | "jlss" | null;
 export type DiagnosticLevel = "info" | "warning" | null;
@@ -55,8 +45,6 @@ export type QueueEntry = {
   cancelledAt?: string;
   cancelNote?: string;
 };
-
-const TERMINAL_STATES: QueueState[] = ["done", "review", "failed", "cancelled"];
 
 export class QueueStore {
   static load(): QueueEntry[] {
@@ -167,7 +155,7 @@ export class QueueStore {
   static cancel(itemKey: string, libraryID: number): boolean {
     const entries = this.load();
     const entry = entries.find(e => e.itemKey === itemKey && e.libraryID === libraryID);
-    if (!entry || ["done", "review", "failed", "cancelled"].includes(entry.state)) return false;
+    if (!entry || isTerminalState(entry.state)) return false;
     const hadRemoteSubmission = Boolean(entry.submittedAt || entry.taskUUID || entry.taskCode || entry.source === "jlss");
     entry.state = "cancelled";
     entry.cancelledAt = new Date().toISOString();
@@ -185,7 +173,7 @@ export class QueueStore {
     let count = 0;
     const now = new Date().toISOString();
     for (const entry of entries) {
-      if (TERMINAL_STATES.includes(entry.state)) continue;
+      if (isTerminalState(entry.state)) continue;
       const hadRemoteSubmission = Boolean(entry.submittedAt || entry.taskUUID || entry.taskCode || entry.source === "jlss");
       entry.state = "cancelled";
       entry.cancelledAt = now;
@@ -205,7 +193,7 @@ export class QueueStore {
   }
 
   static active(): QueueEntry[] {
-    return this.load().filter(e => !TERMINAL_STATES.includes(e.state));
+    return this.load().filter(e => !isTerminalState(e.state));
   }
 
   static clearCompleted() {
@@ -217,7 +205,7 @@ export class QueueStore {
   }
 
   static clearFinished() {
-    this.save(this.load().filter(e => !["done", "cancelled"].includes(e.state)));
+    this.save(this.load().filter(e => !isClearableState(e.state)));
   }
 
   static countByState() {
