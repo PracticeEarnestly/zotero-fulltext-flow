@@ -1,9 +1,10 @@
 import { AttachmentGuard } from "./AttachmentGuard";
+import { AnnotationMerge } from "./AnnotationMerge";
 
 export interface DuplicateFile {
   id: number; key: string; libraryID: number; parentID: number;
   title: string; path: string; attachmentPath: string; size: number; modified: number; hash: string;
-  annotations: number; notes: number; protectedReason: string;
+  annotations: number; notes: number; protectedReason: string; mergeReason: string;
 }
 export interface DuplicateGroup {
   id: string; parentID: number; libraryID: number; title: string; files: DuplicateFile[];
@@ -24,7 +25,7 @@ export class DuplicateAttachments {
     const protectedReason = annotations || notes ? "有批注或笔记（包括回收站中的），请人工处理"
       : !item.isStoredFileAttachment() ? "链接文件仅展示，不在此清理"
       : !item.isEditable() || !library || !library.hasTrash ? "无编辑权限或资料库无回收站" : "";
-    return { annotations, notes, protectedReason };
+    return { annotations, notes, protectedReason, mergeReason: AnnotationMerge.reason(item) };
   }
 
   private async inspect(item: any, parent: any, hash = false): Promise<DuplicateFile> {
@@ -94,6 +95,7 @@ export class DuplicateAttachments {
               for (const file of files) {
                 if (files.some(other => other.id !== file.id && other.path === file.path)) {
                   file.protectedReason = "多个附件指向同一路径，请人工处理";
+                  file.mergeReason = file.protectedReason;
                 }
               }
               groups.push({ id: `${parent.libraryID}:${parent.id}:${files[0].hash}`, parentID: parent.id,
@@ -111,11 +113,11 @@ export class DuplicateAttachments {
     } finally { this.busy = false; }
   }
 
-  async trash(groupID: string, keeperID: number, removeIDs: number[], confirmation: string) {
+  async trash(groupID: string, keeperID: number, removeIDs: number[], confirmation: string, merge = false) {
     if (this.busy) throw new Error("已有操作正在进行。");
     const group = this.groups.get(groupID);
     const ids = [...new Set(removeIDs)];
-    if (confirmation !== "移入回收站" || !group || !ids.length || ids.includes(keeperID)
+    if (confirmation !== (merge ? "合并批注并清理" : "移入回收站") || !group || !ids.length || ids.includes(keeperID)
       || !group.files.some(f => f.id === keeperID) || ids.some(id => !group.files.some(f => f.id === id))) {
       throw new Error("请选择一份保留附件和要移入回收站的副本，并确认操作。");
     }
@@ -136,21 +138,24 @@ export class DuplicateAttachments {
           if (["key", "path", "attachmentPath", "size", "modified", "hash"].some(key => file[key] !== snapshot[key])) {
             throw new Error(`${snapshot.key} 在扫描后发生变化，请重新扫描。`);
           }
-          if (id !== keeperID && file.protectedReason) throw new Error(`${file.key}：${file.protectedReason}`);
+          if (merge) {
+            if (file.mergeReason) throw new Error(`${file.key}：${file.mergeReason}`);
+            if (file.annotations !== snapshot.annotations) throw new Error("批注数量在扫描后变化，请重新扫描。");
+          } else if (id !== keeperID && file.protectedReason) throw new Error(`${file.key}：${file.protectedReason}`);
           if (id !== keeperID && group.files.filter(f => f.path === file.path).length > 1) {
             throw new Error("多个附件指向同一路径，不能在此清理。");
           }
           verified.push(file);
           live.push(item);
         }
-        for (const file of verified) {
-          const stat = await IOUtils.stat(file.path);
-          if (stat.size !== file.size || stat.lastModified !== file.modified) {
-            throw new Error("文件在核验过程中发生变化，请重新扫描。");
-          }
-        }
         // Recheck metadata after hashing and within the DB transaction. No erase or file removal.
-        await Zotero.DB.executeTransaction(async () => {
+        const validate = async () => {
+          for (const file of verified) {
+            const stat = await IOUtils.stat(file.path);
+            if (stat.size !== file.size || stat.lastModified !== file.modified) {
+              throw new Error("文件在核验过程中发生变化，请重新扫描。");
+            }
+          }
           if (this.stopped) throw new Error("窗口已关闭或操作已取消，请重新扫描。");
           if (parent.deleted || !parent.isEditable()) throw new Error("父条目状态已变化。");
           for (const item of live) {
@@ -159,15 +164,29 @@ export class DuplicateAttachments {
               || !item.isPDFAttachment() || item.key !== file.key || item.attachmentPath !== file.attachmentPath) {
               throw new Error("附件状态已变化，请重新扫描。");
             }
-            if (item.id !== keeperID && this.protection(item).protectedReason) {
+            if (merge ? AnnotationMerge.reason(item) : item.id !== keeperID && this.protection(item).protectedReason) {
               throw new Error("附件新增批注、笔记或权限已变化，请重新扫描。");
             }
           }
-          await Zotero.Items.trash(ids);
-        });
+        };
+        let result: any = ids.length;
+        if (merge) {
+          const record = await AnnotationMerge.prepare(live, verified, group.title);
+          result = await AnnotationMerge.execute(record, live, validate);
+        } else {
+          await Zotero.DB.executeTransaction(async () => { await validate(); await Zotero.Items.trash(ids); });
+        }
         this.groups.delete(groupID);
-        return ids.length;
+        return result;
       });
     } finally { this.busy = false; }
+  }
+
+  history(libraryID: number) { return AnnotationMerge.history(libraryID); }
+  async restore(id: string, libraryID: number, confirmation: string) {
+    if (this.busy || this.stopped) throw new Error("操作正在进行或窗口已关闭，请重新打开窗口。");
+    this.busy = true;
+    try { return await AnnotationMerge.restore(id, libraryID, confirmation, () => this.stopped); }
+    finally { this.busy = false; this.groups.clear(); }
   }
 }

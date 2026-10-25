@@ -9,12 +9,15 @@
   };
   const mib = bytes => `${(bytes / 1048576).toFixed(2)} MiB`;
   let groups = [], busy = false, closed = false;
+  const merging = () => $("mode").value === "merge";
   const keepers = new Map(), selected = new Set();
   function feedback(text, error = false) {
     if (closed) return;
     $("feedback").textContent = text; $("feedback").dataset.error = String(error);
   }
-  const eligible = (group, file) => file.id !== keepers.get(group.id) && !file.protectedReason;
+  const eligible = (group, file) => file.id !== keepers.get(group.id) && (merging()
+    ? file.annotations > 0 && !file.mergeReason && !group.files.find(f => f.id === keepers.get(group.id))?.mergeReason
+    : !file.protectedReason);
   function selection() {
     let count = 0, bytes = 0;
     for (const group of groups) for (const file of group.files) {
@@ -22,6 +25,8 @@
     }
     $("selection").textContent = `已选 ${count} 个副本 · ${mib(bytes)}（逻辑大小）`;
     $("trash").disabled = busy || !count;
+    $("trash").textContent = merging() ? "合并批注并清理副本…" : "将选中副本移入回收站…";
+    $("mode").disabled = busy; $("history").disabled = busy;
     $("scan").disabled = busy; $("scope").disabled = busy;
     $("choose").disabled = busy || !groups.length;
     $("clear").disabled = busy || !selected.size;
@@ -63,7 +68,9 @@
         selectCell.append(check);
         const details = create("td"); details.append(create("div", `${file.title} [${file.key}]`));
         const path = create("div", file.path); path.className = "path"; details.append(path);
-        if (file.protectedReason) { const reason = create("div", file.protectedReason); reason.className = "reason"; details.append(reason); }
+        const blocked = merging() ? file.mergeReason : file.protectedReason;
+        if (blocked) { const reason = create("div", blocked); reason.className = "reason"; details.append(reason); }
+        if (merging() && file.annotations > 0 && !blocked) details.append(create("div", "可迁移 Zotero 批注；执行前还会检查内嵌批注"));
         const counts = create("td", `${mib(file.size)} · 批注 ${file.annotations} · 笔记 ${file.notes}`);
         const open = create("td"); open.append(button("打开 PDF", () => api.open(file.id)));
         row.append(keepCell, selectCell, details, counts, open); body.append(row);
@@ -93,22 +100,61 @@
       ids: group.files.filter(file => selected.has(file.id) && eligible(group, file)).map(file => file.id) })).filter(request => request.ids.length);
     if (!requests.length) return;
     const count = requests.reduce((sum, request) => sum + request.ids.length, 0);
-    const answer = window.prompt(`将 ${requests.length} 组中的 ${count} 个 PDF 副本移入 Zotero 回收站？\n每组指定的保留附件不动；带批注、笔记的附件受保护。\n可从回收站恢复；会随 Zotero 同步。请先关闭正在编辑的 PDF。\n\n请输入“移入回收站”确认：`, "");
-    if (answer !== "移入回收站") return;
-    busy = true; render(); let moved = 0; const errors = [];
+    const merge = merging(), phrase = merge ? "合并批注并清理" : "移入回收站";
+    const annotationCount = requests.reduce((sum, request) => sum + request.group.files.filter(file => request.ids.includes(file.id)).reduce((s, f) => s + f.annotations, 0), 0);
+    const preview = requests.map(request => `${request.group.title}\n保留：${request.group.files.find(file => file.id === request.keeper).key}；副本：${request.group.files.filter(file => request.ids.includes(file.id)).map(file => file.key).join("、")}`).join("\n");
+    const answer = window.prompt(merge
+      ? `将 ${requests.length} 组、${count} 个副本的 ${annotationCount} 条批注迁入指定保留附件，核验成功后将副本移入回收站？\n${preview}\n\n不自动删重；不改写已有笔记中的旧附件链接。请关闭本组所有 PDF 阅读器。\n操作会同步；合并记录只存本机。撤销请用“合并记录 / 恢复”，不要仅手动恢复 PDF，也不要清空回收站。\n\n请输入“${phrase}”确认：`
+      : `将 ${requests.length} 组中的 ${count} 个 PDF 副本移入 Zotero 回收站？\n每组指定的保留附件不动；带批注、笔记的附件受保护。\n可从回收站恢复；会随 Zotero 同步。请先关闭正在编辑的 PDF。\n\n请输入“${phrase}”确认：`, "");
+    if (answer !== phrase) return;
+    busy = true; render(); let moved = 0, annotations = 0; const errors = [], warnings = [];
     try {
       for (const request of requests) {
         if (closed) break;
         feedback(`正在重新核验并处理，已移入回收站 ${moved} 个…`);
         try {
-          moved += await api.trash(request.group.id, request.keeper, request.ids, answer);
+          if (merge) {
+            const result = await api.merge(request.group.id, request.keeper, request.ids, answer);
+            moved += result.moved; annotations += result.annotations;
+            if (result.warning) warnings.push(result.warning);
+          } else moved += await api.trash(request.group.id, request.keeper, request.ids, answer);
           groups = groups.filter(group => group.id !== request.group.id);
         } catch (error) { errors.push(`${request.group.title}：${error.message || error}`); }
       }
-      feedback(`已移入回收站 ${moved} 个副本；${errors.length} 组未处理。未清空回收站。\n${errors.join("\n")}${moved ? "\n已处理组已移出列表；如仅清理部分副本，可重新扫描。" : ""}`, errors.length > 0);
+      feedback(`${merge ? `已迁移并核验 ${annotations} 条批注。` : ""}已移入回收站 ${moved} 个副本；${errors.length} 组未处理。未清空回收站。\n${errors.join("\n")}\n${warnings.join("\n")}${moved ? "\n已处理组已移出列表；如仅清理部分副本，可重新扫描。" : ""}`, errors.length > 0 || warnings.length > 0);
     } finally { busy = false; selected.clear(); render(); }
   }
+  async function history() {
+    if (busy) return;
+    busy = true; render();
+    try {
+      const records = await api.history();
+      $("history-list").hidden = false; $("history-list").replaceChildren();
+      for (const record of records) {
+        const row = create("div", `${record.createdAt} · ${record.title} · ${record.annotations} 条批注 / ${record.copies} 个副本 · ${record.status === "restored" ? "已恢复" : record.status === "committed" ? "已合并" : "待核对（可能未执行或已完成）"} `);
+        if (record.status !== "restored") {
+          const restore = button("核对并恢复此合并", async () => {
+            if (busy) return;
+            const answer = window.prompt(`恢复“${record.title}”的这一次合并？\n将原副本恢复，并将本次迁移的 ${record.annotations} 条批注移回原附件。若批注被修改、附件缺失或已手动恢复，将停止；不会覆盖后续修改。\n\n请关闭相关 PDF 阅读器，并输入“恢复合并”：`, "");
+            if (answer !== "恢复合并") return;
+            busy = true; render();
+            try { feedback(await api.restore(record.id, answer)); }
+            catch (error) { feedback(String(error.message || error), true); }
+            finally {
+              groups = []; selected.clear(); keepers.clear(); busy = false;
+              $("history-list").replaceChildren(); $("history-list").hidden = true; render();
+            }
+          });
+          restore.disabled = false; row.append(restore);
+        }
+        $("history-list").append(row);
+      }
+      if (!records.length) $("history-list").append(create("div", "本机当前资料库没有合并记录。"));
+    } catch (error) { feedback(String(error.message || error), true); }
+    finally { busy = false; render(); }
+  }
   window.addEventListener("load", () => {
+    $("mode").value = "trash";
     $("scope-label").textContent = `${api.scopeLabel} · 打开时选中 ${api.selectedCount} 个条目`;
     $("scope").value = api.selectedCount ? "selected" : "library";
     $("scan").addEventListener("click", scan);
@@ -116,6 +162,8 @@
     $("choose").addEventListener("click", () => { for (const group of groups) for (const file of group.files) if (eligible(group, file)) selected.add(file.id); render(); });
     $("clear").addEventListener("click", () => { selected.clear(); render(); });
     $("trash").addEventListener("click", trash);
+    $("mode").addEventListener("change", () => { selected.clear(); render(); });
+    $("history").addEventListener("click", history);
     selection();
   }, { once: true });
   window.addEventListener("unload", () => { closed = true; api.cancel(); }, { once: true });

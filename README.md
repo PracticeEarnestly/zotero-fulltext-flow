@@ -1,6 +1,6 @@
 # FullTextFlow for Zotero
 
-**Current preview: 0.5.0**
+**Current preview: 0.5.1**
 
 **FullTextFlow** is a Zotero plugin for selectively completing missing full-text PDFs at the **Collection** level. It is intended for research libraries where only high-priority project folders need complete PDFs.
 
@@ -27,6 +27,21 @@ The initial Zotero–JLSS workflow design was informed by the open GitHub projec
 显示的 MiB 是副本逻辑大小，不代表立即节省磁盘空间。回收站未清空时文件仍保留；实际占用还受文件系统克隆、快照等影响。确认保留副本可用后，再自行决定是否清空回收站。
 
 隔离界面预览：`node scripts/preview_duplicate_manager.mjs`，仅使用虚构数据，不连接 Zotero。测试：`npm test`；构建：`npm run build:local`。
+
+### 合并批注并清理副本（0.5.1）
+
+默认仍为“直接清理无批注副本”。需要保留副本批注时：
+
+1. 扫描后，切换操作为 **合并批注并清理副本**，选择每组保留的 PDF，再勾选带批注的副本。切换模式或保留对象会清空勾选；无批注副本请用直接清理模式。
+2. 关闭本组所有 Zotero PDF 阅读器标签页和独立窗口。确认框列出保留附件、源附件和拟迁移批注数量，输入 `合并批注并清理`。
+3. 仅接受同一条目、完整 SHA-256 相同的可编辑本地存储 PDF。附件笔记、链接文件、已删除或无权限的批注、外部批注及 PDF 内嵌批注均阻止合并；PDF 内嵌批注会在执行前进一步检查，解析失败也不会执行。
+4. 移动现有 Zotero 批注记录，不复制、不自动去重。保留批注标识、内容、评论、位置、颜色、标签等；从数据库重新读取并核验后才将源副本移入回收站。同一组内迁移和回收站操作使用同一数据库事务，出错则整组回滚。
+
+**撤销合并**：点击 **合并记录 / 恢复 → 核对并恢复此合并**，输入 `恢复合并`。插件检查原文件和批注，将附件恢复并将本次迁移的批注移回原附件，不改动保留 PDF 原有批注。若迁移的批注被修改、再次移动、附件被永久删除或已单独手动恢复，自动恢复将停止，避免覆盖后续工作。多次关联合并应从最新一次开始恢复。
+
+合并前先在 Zotero 数据目录下的 `fulltextflow-annotation-merges/` 写入独立 JSON 记录，保存批注原始归属和内容快照；该目录含私人批注内容，应与资料库一起备份，**不由 Zotero 同步**。记录未成功写入则不开始操作。若在数据库提交后更新记录失败，界面给出警告，历史记录显示待核对；恢复操作会核实实际状态，不会盲目重复迁移。记录不是完整 PDF 备份，不能重建被清空回收站永久删除的文件。
+
+合并/恢复会随 Zotero 数据同步；请避免同时在其他设备或外部软件编辑这些附件。已有笔记中的旧附件跳转链接不会自动改写，合并后需核对。仅从 Zotero 回收站恢复 PDF 不等同于撤销批注合并，请优先使用上述恢复入口。支持的 Zotero 内部阅读器接口若变化，功能会拒绝操作，不会跳过安全检查。
 
 ## Core idea
 
@@ -234,7 +249,7 @@ For linked files using Zotero's relative base path, also provide `--base-dir /pa
 - JLSS integration is **unofficial**. Observed endpoints are not documented as a stable public API and can change.
 - Use FullTextFlow only within your institution's literature-delivery permissions, quotas, and applicable terms.
 
-## Current version: 0.5.0 Preview
+## Current version: 0.5.1 Preview
 
 Implemented:
 

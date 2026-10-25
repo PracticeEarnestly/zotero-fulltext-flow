@@ -10,8 +10,8 @@ const groups = [1, 2].map(id => ({
     id: id * 10 + index, key: `DEMO${id}${index}`, title: index === 1 ? "Full Text PDF" : "Publisher Full Text",
     path: `/demo/storage/DEMO${id}${index}/inflammatory-arthritis-full-text.pdf`, size: 3829012,
     hash: (id === 1 ? "37af0c21" : "9f2a315b").repeat(8),
-    annotations: id === 2 && index === 1 ? 5 : 0, notes: 0,
-    protectedReason: id === 2 && index === 1 ? "有批注或笔记（包括回收站中的），请人工处理" : ""
+    annotations: id === 2 && index < 3 ? (index === 1 ? 5 : 3) : 0, notes: 0, mergeReason: "",
+    protectedReason: id === 2 && index < 3 ? "有批注或笔记（包括回收站中的），请人工处理" : ""
   }))
 }));
 createServer((request, response) => {
@@ -28,10 +28,29 @@ createServer((request, response) => {
     .replace(/<div([^>]*)\/>/g, "<div$1></div>");
   const bridge = `
     let groups = ${JSON.stringify(groups)};
+    const records = [];
     window.arguments = [{wrappedJSObject: {
       scopeLabel: '隔离演示资料库（虚构数据）', selectedCount: 2,
       scan: async () => ({groups: structuredClone(groups), checked: 2, skipped: []}), cancel: () => {},
       open: () => alert('演示：打开 PDF，未访问真实文件'), locate: () => alert('演示：定位条目'),
+      history: async () => records,
+      merge: async (id, keeper, ids, answer) => {
+        if(answer !== '合并批注并清理' || ids.includes(keeper)) throw new Error('未确认');
+        const group = groups.find(g => g.id === id), backup = structuredClone(group);
+        const count = group.files.filter(f => ids.includes(f.id)).reduce((sum,f) => sum+f.annotations,0);
+        group.files.find(f=>f.id===keeper).annotations += count;
+        group.files = group.files.filter(f => !ids.includes(f.id));
+        groups = groups.filter(g => g.files.length > 1);
+        records.push({id: 'demo-' + records.length, createdAt:new Date().toISOString(), title:group.title,
+          status:'committed',annotations:count,copies:ids.length,backup});
+        return {moved:ids.length,annotations:count,warning:''};
+      },
+      restore: async (id, answer) => {
+        if(answer !== '恢复合并') throw new Error('未确认');
+        const record=records.find(r=>r.id===id); groups=groups.filter(g=>g.id!==record.backup.id);
+        groups.push(structuredClone(record.backup)); record.status='restored';
+        return '演示：已恢复附件并将批注移回原附件；未访问真实资料库。';
+      },
       trash: async (id, keeper, ids, answer) => {
         if (answer !== '移入回收站' || ids.includes(keeper)) throw new Error('未确认或保留选择有误');
         const group = groups.find(group => group.id === id);

@@ -40,8 +40,8 @@ function setup() {
     AttachmentGuard: { withItemLock: async (_parent: any, fn: any) => fn(),
       sha256: async (path: string) => { hashes++; const hash = createHash("sha256").update(files.get(path).content).digest("hex"); await hashHook?.(path); return hash; } }
   };
-  const source = readFileSync(new URL("../src/core/DuplicateAttachments.ts", import.meta.url), "utf8")
-    .replace(/^import .*$/gm, "").replace(/^export /gm, "");
+  const source = ["AnnotationMerge", "DuplicateAttachments"].map(name => readFileSync(new URL(`../src/core/${name}.ts`, import.meta.url), "utf8")
+    .replace(/^import .*$/gm, "").replace(/^export /gm, "")).join("\n");
   vm.runInNewContext(ts.transpileModule(source + "\nglobalThis.Scanner = DuplicateAttachments;", {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }
   }).outputText, sandbox);
@@ -188,7 +188,7 @@ async function uiSetup() {
   });
   await listeners.get("load")!(); await get("scan").fire("click");
   const all = (node: Element): Element[] => [node, ...node.children.flatMap(all)];
-  return { get, calls, window, api, controls: () => all(get("groups")).filter(n => n.type === "radio" || n.type === "checkbox") };
+  return { get, calls, window, api, files, all, controls: () => all(get("groups")).filter(n => n.type === "radio" || n.type === "checkbox") };
 }
 
 test("UI starts with no cleanup selection and automatically preserves annotated copy", async () => {
@@ -217,4 +217,42 @@ test("UI reports backend failures without claiming success or retaining destruct
   await e.get("trash").fire("click");
   assert.match(e.get("feedback").textContent, /已移入回收站 0 个副本；1 组未处理/);
   assert.match(e.get("feedback").textContent, /新增批注/); assert.equal(e.get("trash").disabled, true);
+});
+
+test("merge mode clears old selections and requires a distinct typed confirmation", async () => {
+  const e = await uiSetup();
+  e.api.merge = async (...args: any[]) => { e.calls.push(["merge", ...args]); return { moved: 1, annotations: 1 }; };
+  await e.controls().find(n => n.attributes["aria-label"] === "保留 F11")!.fire("change");
+  await e.get("choose").fire("click");
+  e.get("mode").value = "merge"; await e.get("mode").fire("change");
+  assert.equal(e.get("trash").disabled, true);
+  await e.get("choose").fire("click");
+  assert.equal(e.controls().find(n => n.attributes["aria-label"] === "清理 F13")!.checked, true);
+  assert.equal(e.controls().find(n => n.attributes["aria-label"] === "清理 F12")!.checked, false);
+  e.window.prompt = () => "移入回收站"; await e.get("trash").fire("click"); assert.equal(e.calls.length, 0);
+  e.window.prompt = (message: string) => { assert.match(message, /1 条批注/); assert.match(message, /保留：F11/); return "合并批注并清理"; };
+  await e.get("trash").fire("click");
+  assert.deepEqual(JSON.parse(JSON.stringify(e.calls)), [["merge", "group", 11, [13], "合并批注并清理"]]);
+  assert.match(e.get("feedback").textContent, /已迁移并核验 1 条批注/);
+});
+
+test("merge mode protects notes and uneditable keeper", async () => {
+  const e = await uiSetup();
+  await e.controls().find(n => n.attributes["aria-label"] === "保留 F11")!.fire("change");
+  (e.files[0] as any).mergeReason = "附件带笔记";
+  e.get("mode").value = "merge"; await e.get("mode").fire("change"); await e.get("choose").fire("click");
+  assert.equal(e.get("trash").disabled, true);
+});
+
+test("history restore requires confirmation, reports errors and clears stale scan results", async () => {
+  const e = await uiSetup();
+  e.api.history = async () => [{ id: "R1", title: "Paper", annotations: 1, copies: 1, status: "prepared", createdAt: "now" }];
+  e.api.restore = async (...args: any[]) => { e.calls.push(args); throw new Error("批注已被修改"); };
+  await e.get("history").fire("click");
+  const restore = e.all(e.get("history-list")).find(n => n.textContent === "核对并恢复此合并")!;
+  assert.equal(restore.disabled, false);
+  await restore.fire("click"); assert.equal(e.calls.length, 0);
+  e.window.prompt = () => "恢复合并"; await restore.fire("click");
+  assert.deepEqual(JSON.parse(JSON.stringify(e.calls)), [["R1", "恢复合并"]]);
+  assert.match(e.get("feedback").textContent, /被修改/); assert.equal(e.controls().length, 0);
 });

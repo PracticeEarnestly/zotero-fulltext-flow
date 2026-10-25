@@ -19,6 +19,9 @@ export class DuplicateManager {
       }, progress),
       cancel: () => scanner.cancel(),
       trash: (group: string, keeper: number, ids: number[], confirmation: string) => scanner.trash(group, keeper, ids, confirmation),
+      merge: (group: string, keeper: number, ids: number[], confirmation: string) => scanner.trash(group, keeper, ids, confirmation, true),
+      history: () => scanner.history(libraryID),
+      restore: (id: string, confirmation: string) => scanner.restore(id, libraryID, confirmation),
       open: (id: number) => win.ZoteroPane.viewAttachment(id),
       locate: async (id: number) => { win.focus(); await win.ZoteroPane.selectItem(id); }
     };

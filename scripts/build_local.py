@@ -14,6 +14,7 @@ ORDER = [
     "src/core/AuthManager.ts",
     "src/core/AttachmentDetector.ts",
     "src/core/AttachmentGuard.ts",
+    "src/core/AnnotationMerge.ts",
     "src/core/DuplicateAttachments.ts",
     "src/core/Metadata.ts",
     "src/core/RetrievalStrategy.ts",

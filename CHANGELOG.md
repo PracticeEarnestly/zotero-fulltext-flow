@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1 - 2026-10-25
+
+- Add explicit annotation-merge mode for byte-identical same-parent stored PDFs. Move original editable Zotero annotation records without deduplication, verify semantic data with DB readback, then trash sources in the same transaction.
+- Require typed confirmation, closed PDF readers, stable files and live annotation permissions. Reject attachment notes, external/embedded annotations, trashed annotations, shared paths, and unsupported reader inventories.
+- Write local per-operation recovery journals before mutation. Add history/recovery UI that restores source PDFs and annotation ownership, handles pending/crash records, refuses changed/missing data, and preserves later unrelated keeper edits. Journals are not Zotero-synced or full-file backups; existing note links are not rewritten.
+- Add transaction-rollback, journal-failure, restart recovery, conflict, confirmation and UI regression tests. Keep direct no-annotation cleanup as the default mode.
+
 ## 0.5.0 - 2026-10-25
 
 - Add a dedicated same-parent duplicate PDF manager, available from Tools and the task center. Scan selected items or the captured library, group local equal-size/SHA-256 PDFs, inspect files, choose keepers, and explicitly select copies for recoverable trash.
