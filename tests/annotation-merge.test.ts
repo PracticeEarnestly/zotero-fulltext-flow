@@ -80,7 +80,7 @@ function setup() {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }
   }).outputText, sandbox);
   const scanner = new sandbox.Scanner();
-  return { ...sandbox, scanner, flags, items, db, journals, pdfs, p, keeper, source, original, a, b, readers,
+  return { ...sandbox, scanner, flags, items, db, journals, pdfs, p, keeper, source, original, a, b, readers, make,
     hook: (hook: any) => { transactionHook = hook; },
     run: async () => { const { groups } = await scanner.scan([p]); return scanner.trash(groups[0].id, 11, [12], "合并批注并清理", true); },
     restore: async () => scanner.restore("12345678-1234-1234-1234-123456789abc", 1, "恢复合并") };
@@ -102,6 +102,108 @@ test("merge preserves keys, comments, tags, positions and both identical annotat
 test("write-ahead journal failure prevents any database writes", async () => {
   const e = setup(); e.flags.failWriteAt = 1;
   await assert.rejects(e.run(), /disk full/); assert.equal(e.flags.saves, 0); assert.equal(e.flags.trash, 0);
+});
+
+test("mixed annotated and clean sources merge, trash and restore as one group", async () => {
+  const e = setup(); const clean = e.make(13, "pdf", 1);
+  const { groups } = await e.scanner.scan([e.p]);
+  const result = await e.scanner.trash(groups[0].id, 11, [12, 13], "合并批注并清理", true);
+  assert.equal(result.annotations, 2); assert.equal(result.moved, 2);
+  assert.equal(e.a.parentID, 11); assert.equal(e.source.deleted, true); assert.equal(clean.deleted, true);
+  assert.match(await e.restore(), /已恢复 2 个附件/);
+  assert.equal(e.a.parentID, 12); assert.equal(e.source.deleted, false); assert.equal(clean.deleted, false);
+});
+
+test("failure rolls back both clean and annotated sources in a mixed group", async () => {
+  const e = setup(); const clean = e.make(13, "pdf", 1); e.flags.failTrash = true;
+  const { groups } = await e.scanner.scan([e.p]);
+  await assert.rejects(e.scanner.trash(groups[0].id, 11, [12, 13], "合并批注并清理", true));
+  assert.equal(e.a.parentID, 12); assert.equal(e.source.deleted, false); assert.equal(clean.deleted, false);
+  assert.equal(e.db.get(13).deleted, false);
+});
+
+function directSetup() {
+  const e = setup(); const clean = e.make(13, "pdf", 1);
+  return { ...e, clean, direct: async () => {
+    const { groups } = await e.scanner.scan([e.p]);
+    return e.scanner.trash(groups[0].id, 11, [13], "移入回收站");
+  } };
+}
+
+test("ordinary trash is journaled and restored without changing keeper annotations or notes", async () => {
+  const e = directSetup(); e.keeper.note = "Keep my note"; e.keeper.persist();
+  const result = await e.direct();
+  assert.equal(result.moved, 1); assert.equal(e.clean.deleted, true);
+  assert.equal((await e.scanner.history(1))[0].kind, "trash");
+  assert.equal(e.original.parentID, 11);
+  await e.restore(); assert.equal(e.clean.deleted, false); assert.equal(e.keeper.note, "Keep my note");
+  assert.equal(e.original.parentID, 11);
+});
+
+test("ordinary trash refuses to mutate when the recovery journal cannot be written", async () => {
+  const e = directSetup(); e.flags.failWriteAt = 1;
+  await assert.rejects(e.direct(), /disk full/); assert.equal(e.flags.trash, 0); assert.equal(e.clean.deleted, false);
+});
+
+test("ordinary trash rollback and prepared-journal recovery leave data intact", async () => {
+  const e = directSetup(); e.flags.failTrash = true;
+  await assert.rejects(e.direct(), /trash failed/); assert.equal(e.clean.deleted, false);
+  assert.equal(e.db.get(13).deleted, false); e.flags.failTrash = false;
+  assert.match(await e.restore(), /未修改资料库/);
+});
+
+test("ordinary trash commit marker failure can be recovered after restart", async () => {
+  const e = directSetup(); e.flags.failWriteAt = 2;
+  const result = await e.direct(); assert.match(result.warning, /标记写入失败/);
+  const restarted = new e.Scanner();
+  await restarted.restore(result.recordID, 1, "恢复操作"); assert.equal(e.clean.deleted, false);
+});
+
+for (const [name, change] of [
+  ["source metadata", (e: any) => e.clean.change("title", "New title")],
+  ["source note", (e: any) => { e.clean.note = "New note"; e.clean.persist(); }],
+  ["source annotation", (e: any) => e.make(40, "annotation", 13)],
+  ["missing PDF", (e: any) => e.pdfs.delete("/pdf/13.pdf")],
+  ["open reader", (e: any) => e.readers.push({ itemID: 13 })],
+  ["source moved", (e: any) => { e.clean.parentID = 2; e.clean.persist(); }],
+] as [string, (e: any) => void][]) {
+  test(`ordinary restore refuses ${name} conflict without restoring the source`, async () => {
+    const e = directSetup(); await e.direct(); change(e);
+    await assert.rejects(e.restore()); assert.equal(e.clean.deleted, true);
+  });
+}
+
+test("ordinary restore transaction failure rolls back source state", async () => {
+  const e = directSetup(); await e.direct(); e.flags.failSaveAt = e.flags.saves + 1;
+  await assert.rejects(e.restore()); assert.equal(e.clean.deleted, true); assert.equal(e.db.get(13).deleted, true);
+});
+
+test("legacy merge journals without kind or batch ID remain restorable", async () => {
+  const e = setup(); await e.run();
+  for (const record of e.journals.values()) { delete record.kind; delete record.batchID; }
+  const history = await e.scanner.history(1);
+  assert.equal(history[0].kind, "merge"); assert.equal(history[0].batchID, history[0].id);
+  await e.restore(); assert.equal(e.a.parentID, 12); assert.equal(e.source.deleted, false);
+});
+
+test("ordinary restore detects metadata change at transaction entry", async () => {
+  const e = directSetup(); await e.direct(); e.hook(() => e.clean.change("title", "Late edit"));
+  await assert.rejects(e.restore(), /已变化/); assert.equal(e.clean.deleted, true);
+});
+
+test("batch identities persist across group records but reset for the next batch", async () => {
+  const e = directSetup(); let counter = 1;
+  e.Services.uuid.generateUUID = () => `00000000-0000-0000-0000-${String(counter++).padStart(12, "0")}`;
+  const parent = e.make(100, "regular"); e.make(101, "pdf", 100); e.make(102, "pdf", 100);
+  const parent2 = e.make(200, "regular"); e.make(201, "pdf", 200); e.make(202, "pdf", 200);
+  const { groups } = await e.scanner.scan([e.p, parent, parent2]); e.scanner.beginBatch();
+  const a = await e.scanner.trash(groups[0].id, 11, [13], "移入回收站");
+  const b = await e.scanner.trash(groups[1].id, 101, [102], "移入回收站");
+  e.scanner.beginBatch();
+  const c = await e.scanner.trash(groups[2].id, 201, [202], "移入回收站");
+  const history = await e.scanner.history(1);
+  assert.equal(history.find((r: any) => r.id === a.recordID).batchID, history.find((r: any) => r.id === b.recordID).batchID);
+  assert.notEqual(history.find((r: any) => r.id === a.recordID).batchID, history.find((r: any) => r.id === c.recordID).batchID);
 });
 
 for (const failure of ["save", "readback", "trash"]) {

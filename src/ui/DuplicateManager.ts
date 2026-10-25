@@ -18,6 +18,8 @@ export class DuplicateManager {
         return parents.filter((item: any) => item.libraryID === libraryID);
       }, progress),
       cancel: () => scanner.cancel(),
+      beginBatch: () => scanner.beginBatch(),
+      notes: (group: string) => scanner.notes(group),
       trash: (group: string, keeper: number, ids: number[], confirmation: string) => scanner.trash(group, keeper, ids, confirmation),
       merge: (group: string, keeper: number, ids: number[], confirmation: string) => scanner.trash(group, keeper, ids, confirmation, true),
       history: () => scanner.history(libraryID),

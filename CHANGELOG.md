@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.3 - 2026-10-25
+
+- Partition duplicate groups into direct cleanup, annotation merge and manual review; show protected-copy reasons, expandable selection details, concise confirmation totals and per-group progress.
+- Add read-only side-by-side attachment-note inspection including trashed child notes, plain-text line comparison and inert HTML source. Never render note HTML, load embedded resources, or infer permission to delete matching notes.
+- Journal ordinary cleanup before mutation alongside annotation merges, group records by batch, and expose one operations/undo entry. Retain compatibility with legacy merge records; old unjournaled direct cleanup cannot be retroactively recovered through this UI.
+- Verify source metadata, note/annotation absence, file integrity and permissions when undoing ordinary cleanup. Stop batch undo on conflict and report partial completion; do not overwrite subsequent edits or claim cross-group atomicity.
+- Add isolated regressions for journal failure, restart recovery, rollback, source edits, note scope, inert rendering, batch identities and partial undo.
+
+## 0.5.2 - 2026-10-25
+
+- Simplify duplicate PDF cleanup into scan, one-click safe selection, and one confirmed batch action. Default smart mode automatically routes annotated sources through merge-and-verify before trashing, and clean groups through direct trash. Retain optional restricted modes.
+- Replace typed cleanup confirmation with one explicit summary confirmation listing keeper/source keys and annotation counts. Cancellation gives visible feedback; unavailable actions explain the next step and protected-copy counts.
+- Preserve backend revalidation, local recovery journals and per-group transactions. Mixed same-group sources use one merge transaction; failed merges never fall back to direct trash. No permanent deletion or automatic note merging.
+- Add mixed-batch, cancellation, blocked-copy and double-submission regression coverage.
+
 ## 0.5.1 - 2026-10-25
 
 - Add explicit annotation-merge mode for byte-identical same-parent stored PDFs. Move original editable Zotero annotation records without deduplication, verify semantic data with DB readback, then trash sources in the same transaction.

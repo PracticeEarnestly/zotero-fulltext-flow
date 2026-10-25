@@ -15,6 +15,11 @@ export class DuplicateAttachments {
   private groups = new Map<string, DuplicateGroup>();
   private busy = false;
   private stopped = false;
+  private batchID?: string;
+  beginBatch() {
+    if (this.busy || this.stopped) throw new Error("请完成扫描后再开始操作。");
+    this.batchID = Services.uuid.generateUUID().toString().replace(/[{}]/g, "");
+  }
   cancel() { this.stopped = true; }
   private checkCancelled() { if (this.stopped) throw new Error("扫描已取消；未修改任何附件。"); }
 
@@ -55,7 +60,7 @@ export class DuplicateAttachments {
 
   async scan(source: any[] | (() => Promise<any[]>), progress: (text: string) => void = () => {}) {
     if (this.busy) throw new Error("已有操作正在进行。");
-    this.busy = true; this.stopped = false; this.groups.clear();
+    this.busy = true; this.stopped = false; this.batchID = undefined; this.groups.clear();
     const groups: DuplicateGroup[] = [], skipped: string[] = [];
     let checked = 0;
     try {
@@ -171,10 +176,11 @@ export class DuplicateAttachments {
         };
         let result: any = ids.length;
         if (merge) {
-          const record = await AnnotationMerge.prepare(live, verified, group.title);
+          const record = await AnnotationMerge.prepare(live, verified, group.title, this.batchID);
           result = await AnnotationMerge.execute(record, live, validate);
         } else {
-          await Zotero.DB.executeTransaction(async () => { await validate(); await Zotero.Items.trash(ids); });
+          const record = await AnnotationMerge.prepareTrash(live, verified, group.title, this.batchID);
+          result = await AnnotationMerge.executeTrash(record, live, validate);
         }
         this.groups.delete(groupID);
         return result;
@@ -183,6 +189,29 @@ export class DuplicateAttachments {
   }
 
   history(libraryID: number) { return AnnotationMerge.history(libraryID); }
+  async notes(groupID: string) {
+    const group = this.groups.get(groupID);
+    if (!group || this.busy || this.stopped) throw new Error("请完成扫描后查看笔记。");
+    const result = [];
+    for (const file of group.files) {
+      const item = await Zotero.Items.getAsync(file.id);
+      if (!item || item.key !== file.key || item.deleted || item.parentID !== group.parentID
+        || item.libraryID !== group.libraryID) throw new Error("附件已变化，请重新扫描。");
+      await item.loadAllData();
+      const notes = [];
+      if (item.getNote().trim()) notes.push({ key: item.key, deleted: false, html: item.getNote() });
+      for (const id of item.getNotes(true)) {
+        const note = await Zotero.Items.getAsync(id);
+        if (!note || !note.isNote() || note.parentID !== item.id || note.libraryID !== group.libraryID) {
+          throw new Error("笔记归属已变化，请重新扫描。");
+        }
+        await note.loadAllData();
+        notes.push({ key: note.key, deleted: !!note.deleted, html: note.getNote() });
+      }
+      result.push({ key: item.key, title: String(item.getField("title") || item.key), notes });
+    }
+    return result;
+  }
   async restore(id: string, libraryID: number, confirmation: string) {
     if (this.busy || this.stopped) throw new Error("操作正在进行或窗口已关闭，请重新打开窗口。");
     this.busy = true;

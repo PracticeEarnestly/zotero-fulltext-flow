@@ -20,7 +20,18 @@
   #coverage { max-height: 90px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
   #history-list { max-height: 150px; overflow: auto; }
   #history-list > div { padding: 6px; border-bottom: 1px solid ThreeDShadow; }
+  .result-category > summary { padding: 10px; font-weight: 600; cursor: pointer; background: ButtonFace; }
+  #notes-panel { max-height: 300px; overflow: auto; border: 1px solid ThreeDShadow; padding: 10px; }
+  #notes-panel[hidden] { display: none; }
+  .note-columns { display: flex; gap: 12px; overflow-x: auto; }
+  .note-column { min-width: 300px; flex: 1; }
+  .note-column pre, #selected-preview { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .note-changed { background: #fff0c2; color: #503600; }
+  #selection-details { max-height: 130px; overflow: auto; }
   .hint { opacity: .8; line-height: 1.5; }
+  #summary, #next-step { margin: 6px 0; }
+  #trash:not(:disabled) { background: #1762b0; color: white; border: 1px solid #1762b0; }
+  #selection { flex-basis: 100%; }
  ]]></html:style>
  <vbox flex="1" style="padding: 16px; min-width: 800px; min-height: 550px;">
   <description style="font-size: 20px; font-weight: 600;">同一条目 · 重复 PDF</description>
@@ -29,22 +40,26 @@
   <html:div class="toolbar">
    <html:label for="scope">扫描范围</html:label>
    <html:select id="scope"><html:option value="selected">打开窗口时选中的条目</html:option><html:option value="library">整个当前资料库</html:option></html:select>
-   <html:button id="scan">扫描重复 PDF</html:button>
+   <html:button id="scan">① 扫描重复 PDF</html:button>
    <html:button id="cancel" disabled="disabled">取消扫描</html:button>
-   <html:button id="history">合并记录 / 恢复</html:button>
+   <html:button id="history">操作记录 / 撤销</html:button>
   </html:div>
   <html:div id="history-list" hidden="hidden"/>
+  <html:div id="notes-panel" hidden="hidden"/>
   <html:div id="feedback" role="status" aria-live="polite">扫描不会修改附件。</html:div>
   <html:div id="coverage"/>
+  <html:div id="summary"/>
+  <html:div id="next-step" role="status" aria-live="polite"/>
   <html:div id="groups"><html:p>先扫描，再选择每组保留的附件。不会默认勾选任何待清理副本。</html:p></html:div>
   <html:div class="toolbar">
-   <html:label for="mode">操作</html:label>
-   <html:select id="mode"><html:option value="trash">直接清理无批注副本</html:option><html:option value="merge">合并批注并清理副本</html:option></html:select>
-   <html:button id="choose" disabled="disabled">勾选可清理副本</html:button>
+   <html:label for="mode">处理方式</html:label>
+   <html:select id="mode"><html:option value="auto">智能处理（推荐）</html:option><html:option value="trash">仅清理无批注副本</html:option><html:option value="merge">仅合并有批注副本</html:option></html:select>
+   <html:button id="choose" disabled="disabled">② 一键勾选安全副本</html:button>
    <html:button id="clear" disabled="disabled">取消勾选</html:button>
+   <html:button id="trash" disabled="disabled">③ 一键移入回收站…</html:button>
    <html:span id="selection">已选 0 个副本</html:span>
-   <html:button id="trash" disabled="disabled">将选中副本移入回收站…</html:button>
   </html:div>
-  <html:div class="hint">合并模式保留所有 Zotero 批注，不自动删重；附件笔记、外部批注和链接文件不合并。请关闭本组所有 PDF 阅读器。撤销合并请用“合并记录 / 恢复”，仅从回收站恢复 PDF 不会移回批注。记录只存本机，不能恢复被永久删除的附件；合并会随 Zotero 同步。已有笔记中的旧附件链接不重写，请核对。</html:div>
+  <html:details id="selection-details"><html:summary>展开本次处理明细</html:summary><html:pre id="selected-preview"/></html:details>
+  <html:div class="hint">附件笔记可只读对照，不自动合并。操作记录仅存本机，不是 PDF 备份；从“操作记录 / 撤销”恢复。操作会同步，不改写旧链接，不自动删重批注。移入回收站不立即释放磁盘空间，不会自动清空回收站。</html:div>
  </vbox>
 </window>

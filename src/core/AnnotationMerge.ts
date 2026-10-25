@@ -6,6 +6,8 @@ type MergeRecord = {
   schema: 1; id: string; createdAt: string; status: "prepared" | "committed" | "restored";
   libraryID: number; parentID: number; title: string; keeperID: number;
   files: DuplicateFile[]; annotations: MergeAnnotation[]; keeperAnnotations: MergeAnnotation[];
+  kind?: "merge" | "trash"; batchID?: string;
+  sourceContents?: Record<string, string>;
 };
 
 // Write-ahead journal is local to the Zotero data directory, NOT synced by Zotero.
@@ -28,6 +30,54 @@ export class AnnotationMerge {
     const sort = (value: any): any => Array.isArray(value) ? value.map(sort)
       : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map(k => [k, sort(value[k])])) : value;
     return JSON.stringify(sort(json));
+  }
+  private static sourceContent(item: any) {
+    const json = JSON.parse(this.content(item));
+    delete json.deleted; // Trash/restore changes only this field.
+    return JSON.stringify(json);
+  }
+  private static checkTrashSources(record: MergeRecord, items: any[]) {
+    for (const item of items.filter(item => item.id !== record.keeperID)) {
+      if (item.getAnnotations(true).length || item.getNotes(true).length || item.getNote().trim()
+        || this.sourceContent(item) !== record.sourceContents?.[item.id]) {
+        throw new Error("副本内容、批注或笔记已变化，未执行清理或恢复。");
+      }
+    }
+  }
+  static async prepareTrash(items: any[], files: DuplicateFile[], title: string, batchID?: string): Promise<MergeRecord> {
+    this.assertClosed(items.map(item => item.id));
+    const [keeper, ...sources] = items;
+    const record: MergeRecord = { schema: 1, kind: "trash", batchID,
+      id: Services.uuid.generateUUID().toString().replace(/[{}]/g, ""), createdAt: new Date().toISOString(),
+      status: "prepared", libraryID: keeper.libraryID, parentID: keeper.parentID, title, keeperID: keeper.id,
+      files: JSON.parse(JSON.stringify(files)), annotations: [], keeperAnnotations: [],
+      sourceContents: Object.fromEntries(sources.map(item => [item.id, this.sourceContent(item)])) };
+    this.checkTrashSources(record, items);
+    return record;
+  }
+  static async executeTrash(record: MergeRecord, items: any[], validate: () => Promise<void>) {
+    await this.write(record);
+    try {
+      await Zotero.DB.executeTransaction(async () => {
+        await validate(); this.assertClosed(items.map(item => item.id)); this.checkTrashSources(record, items);
+        const sources = items.filter(item => item.id !== record.keeperID);
+        await Zotero.Items.trash(sources.map(item => item.id));
+        for (const item of sources) {
+          await item.loadAllData(true);
+          const expected = record.files.find(file => file.id === item.id)!;
+          if (!item.deleted || item.key !== expected.key || item.libraryID !== record.libraryID
+            || item.parentID !== record.parentID || item.attachmentPath !== expected.attachmentPath) {
+            throw new Error("回收站状态核验失败。");
+          }
+        }
+        this.checkTrashSources(record, items);
+      });
+    } catch (error) { await this.reload(record); throw error; }
+    record.status = "committed";
+    let warning = "";
+    try { await this.write(record); }
+    catch (_) { warning = "清理已完成，但记录完成标记写入失败；可从操作记录核对并恢复。"; }
+    return { moved: record.files.length - 1, annotations: 0, recordID: record.id, warning };
   }
   static assertClosed(ids: number[]) {
     const readers = (Zotero.Reader as any)?._readers;
@@ -62,7 +112,7 @@ export class AnnotationMerge {
     }
     return rows;
   }
-  static async prepare(items: any[], files: DuplicateFile[], title: string): Promise<MergeRecord> {
+  static async prepare(items: any[], files: DuplicateFile[], title: string, batchID?: string): Promise<MergeRecord> {
     this.assertClosed(items.map(item => item.id));
     for (const item of items) {
       const reason = this.reason(item);
@@ -73,7 +123,7 @@ export class AnnotationMerge {
     const [keeper, ...sources] = items;
     const annotations = (await Promise.all(sources.map(item => this.capture(item)))).flat();
     if (!annotations.length) throw new Error("选中副本没有可迁移批注，请使用直接清理。");
-    return { schema: 1, id: Services.uuid.generateUUID().toString().replace(/[{}]/g, ""),
+    return { schema: 1, kind: "merge", batchID, id: Services.uuid.generateUUID().toString().replace(/[{}]/g, ""),
       createdAt: new Date().toISOString(), status: "prepared", libraryID: keeper.libraryID,
       parentID: keeper.parentID, title, keeperID: keeper.id,
       files: JSON.parse(JSON.stringify(files)), annotations, keeperAnnotations: await this.capture(keeper) };
@@ -150,16 +200,18 @@ export class AnnotationMerge {
         if (record.schema !== 1 || record.libraryID !== libraryID) continue;
         this.path(record.id);
         records.push({ id: record.id, title: record.title, createdAt: record.createdAt, status: record.status,
+          kind: record.kind || "merge", batchID: record.batchID || record.id,
           annotations: record.annotations.length, copies: record.files.length - 1 });
       } catch (_) { throw new Error("合并记录无法读取；请保留记录文件并检查，不要清空回收站。"); }
     }
     return records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
   static async restore(id: string, libraryID: number, confirmation: string, cancelled: () => boolean) {
-    if (confirmation !== "恢复合并") throw new Error("请输入“恢复合并”确认。");
+    if (!["恢复合并", "恢复操作"].includes(confirmation)) throw new Error("请确认恢复操作。");
     const record = await IOUtils.readJSON(this.path(id)) as MergeRecord;
     if (record.schema !== 1 || record.id !== id || record.libraryID !== libraryID
-      || !["prepared", "committed", "restored"].includes(record.status)) throw new Error("合并记录无效或不属于当前资料库。");
+      || (record.kind !== undefined && !["trash", "merge"].includes(record.kind))
+      || !["prepared", "committed", "restored"].includes(record.status)) throw new Error("操作记录无效或不属于当前资料库。");
     const parent = await Zotero.Items.getAsync(record.parentID);
     return AttachmentGuard.withItemLock(parent, async () => {
       const checkParent = () => {
@@ -201,6 +253,7 @@ export class AnnotationMerge {
             || stat.size !== expected.size || stat.lastModified !== expected.modified) throw new Error("附件状态或文件已变化，未恢复。");
         }
       };
+      if (record.kind === "trash") this.checkTrashSources(record, items);
       const alreadyOriginal = sources.every(item => !item.deleted)
         && (await Promise.all(record.annotations.map(row => Zotero.Items.getAsync(row.id))))
           .every((item, index) => item && item.parentID === record.annotations[index].fromID);
@@ -215,6 +268,7 @@ export class AnnotationMerge {
       try {
         await Zotero.DB.executeTransaction(async () => {
           await verifyFiles();
+          if (record.kind === "trash") this.checkTrashSources(record, items);
           await this.verifyAnnotations(record.annotations, libraryID, record.keeperID);
           for (const item of sources) { item.deleted = false; await item.save(); }
           for (const row of record.annotations) {
@@ -230,6 +284,7 @@ export class AnnotationMerge {
           await this.verifyAnnotations(record.annotations, libraryID);
           for (const item of sources) await item.loadAllData(true);
           await verifyFiles(true);
+          if (record.kind === "trash") this.checkTrashSources(record, items);
         });
       } catch (error) { await this.reload(record); throw error; }
       record.status = "restored";
