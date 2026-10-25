@@ -7,6 +7,7 @@ import type { QueueState } from "./QueueStates";
 
 export type QueueSource = "zotero" | "jlss" | null;
 export type DiagnosticLevel = "info" | "warning" | null;
+export type QueueTarget = { itemKey: string; libraryID: number };
 
 export type QueueEntry = {
   itemID: number;
@@ -118,12 +119,17 @@ export class QueueStore {
     const entries = this.load();
     const entry = entries.find(e => e.itemKey === itemKey && e.libraryID === libraryID);
     if (!entry) return;
+    // Late network results must not reactivate a task stopped by the user.
+    if (entry.state === "cancelled" && patch.state && patch.state !== "cancelled") return;
     Object.assign(entry, patch, { updatedAt: new Date().toISOString() });
     this.save(entries);
   }
 
   static resetForRetry(itemKey: string, libraryID: number) {
-    this.patch(itemKey, libraryID, {
+    const entries = this.load();
+    const entry = entries.find(e => e.itemKey === itemKey && e.libraryID === libraryID);
+    if (!entry) return;
+    Object.assign(entry, {
       state: "queued",
       source: null,
       error: undefined,
@@ -148,8 +154,10 @@ export class QueueStore {
       nextCheckAt: undefined,
       cancelledAt: undefined,
       cancelNote: undefined,
-      retrievalStrategy: undefined
+      retrievalStrategy: undefined,
+      updatedAt: new Date().toISOString()
     });
+    this.save(entries);
   }
 
   static cancel(itemKey: string, libraryID: number): boolean {
@@ -206,6 +214,14 @@ export class QueueStore {
 
   static clearFinished() {
     this.save(this.load().filter(e => !isClearableState(e.state)));
+  }
+
+  static clearSelected(targets: QueueTarget[]): number {
+    const keys = new Set(targets.map(e => `${e.libraryID}:${e.itemKey}`));
+    const entries = this.load();
+    const kept = entries.filter(e => !keys.has(`${e.libraryID}:${e.itemKey}`) || !isClearableState(e.state));
+    this.save(kept);
+    return entries.length - kept.length;
   }
 
   static countByState() {

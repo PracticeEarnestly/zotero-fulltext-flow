@@ -3,6 +3,9 @@ import { QueueStore } from "../core/QueueStore";
 import { AuthManager } from "../core/AuthManager";
 import { retrievalStrategyLabel } from "../core/RetrievalStrategy";
 import type { FlowEngine } from "../core/FlowEngine";
+import type { QueueTarget } from "../core/QueueStore";
+import { isClearableState, isRetryableState, isTerminalState } from "../core/QueueStates";
+import { AuthWindow } from "./AuthWindow";
 
 export class TaskManager {
   static open(win: any, engine: FlowEngine) {
@@ -30,6 +33,10 @@ export class TaskManager {
         title: e.title || e.queryText,
         queryText: e.queryText,
         state: e.state,
+        canCancel: !isTerminalState(e.state),
+        canRetry: isRetryableState(e.state),
+        canClear: isClearableState(e.state),
+        canRecheck: e.state === "review",
         source: e.source || "",
         verification: e.verification || "",
         reason: e.verificationReason || e.error || e.cancelNote || e.nativeError || "",
@@ -55,10 +62,17 @@ export class TaskManager {
         await engine.poll();
         return QueueStore.load();
       },
-      clearCompleted: () => QueueStore.clearCompleted(),
-      clearCancelled: () => QueueStore.clearCancelled(),
-      clearFinished: () => QueueStore.clearFinished(),
-      retryProblems: async () => engine.retryProblemEntries(),
+      clearSelected: (targets: QueueTarget[]) => QueueStore.clearSelected(targets),
+      retrySelected: (targets: QueueTarget[]) => engine.retryProblemEntries(targets),
+      recheckSelected: (targets: QueueTarget[]) => engine.recheckSelected(targets),
+      confirmReviewed: (targets: QueueTarget[]) => engine.confirmReviewed(targets),
+      openLogin: () => AuthWindow.open(win, engine),
+      locate: async (itemKey: string, libraryID: number) => {
+        const entry = QueueStore.find(itemKey, Number(libraryID));
+        if (!entry || !Zotero.Items.get(entry.itemID)) throw new Error("Zotero 条目已不存在。");
+        win.focus();
+        await win.ZoteroPane.selectItem(entry.itemID);
+      },
       cancelOne: (itemKey: string, libraryID: number) => engine.cancelEntry(itemKey, Number(libraryID)),
       cancelAll: () => engine.cancelAllActive()
     };

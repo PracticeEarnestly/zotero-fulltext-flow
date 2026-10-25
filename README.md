@@ -1,6 +1,6 @@
 # FullTextFlow for Zotero
 
-**Current preview: 0.3.1**
+**Current preview: 0.4.0**
 
 **FullTextFlow** is a Zotero plugin for selectively completing missing full-text PDFs at the **Collection** level. It is intended for research libraries where only high-priority project folders need complete PDFs.
 
@@ -8,9 +8,9 @@ The initial Zotero–JLSS workflow design was informed by the open GitHub projec
 
 ## Task center
 
-Starting with 0.3.0, **FullTextFlow 任务中心** combines the former task overview and task manager. Its header refreshes every two seconds and shows the current retrieval strategy, JLSS login state, automatic-login credential state, active task count, and every queue state. The separate “任务概览” menu item has been removed.
+**FullTextFlow 任务中心** combines overview and task management. Version 0.4.0 adds status filters, search, scoped selection, and separate retry/recheck/stop/remove actions. The list refreshes every two seconds; remote polling follows the configured interval. A saved token does not prove the session is still valid.
 
-**Zotero compatibility:** version 0.3.3 supports Zotero 7–10. On Zotero 10, Collection actions use the plural selection API and can safely process one or more selected Collections without relying on removed single-selection getters.
+**Zotero compatibility:** version 0.4.0 supports Zotero 7–10. On Zotero 10, Collection actions use the plural selection API and can safely process one or more selected Collections without relying on removed single-selection getters.
 
 ## Core idea
 
@@ -166,41 +166,23 @@ Open **Tools → FullTextFlow 任务中心** or **Collection → FullTextFlow �
 
 Starting with **0.2.5**, the legacy XUL list has been replaced by a real HTML table embedded in the Zotero window. This is intended to avoid column overlap and width instability across Zotero versions, DPI scaling, and different window sizes.
 
-The task table provides:
+In 0.4.0, filter by **进行中 / 等待登录 / 失败 / 需复核 / 已完成 / 已停止**, then search by paper title, error, or task code. All rows can be selected. **全选** selects only the current filtered results; changing filter/search clears selection. Automatic refresh preserves selection and does not rebuild unchanged rows.
 
-- sticky column headers;
-- stable explicit column widths;
-- horizontal and vertical scrolling;
-- normal wrapping for article titles and diagnostics;
-- compact non-wrapping status/time columns;
-- checkbox-based row selection plus Select All;
-- selection persistence during the 2-second automatic refresh;
-- warning highlighting for tasks needing attention;
-- disabled selection for terminal tasks that can no longer be cancelled.
+The main table shows status/source, paper, explanation/next step, and last update. Click the paper to locate it in Zotero. Expand **详情** for remote IDs, matching, check timestamps, and PDF verification. The former numbered progress stages are removed because retrieval strategies do not all follow the same sequence.
 
-For each item, the table shows:
+Every selection action displays the number of eligible records:
 
-- task state and stage (`1/5` … `5/5`);
-- current operation;
-- source (`Zotero` or `聚联`);
-- article title;
-- JLSS task code and remote status;
-- remote matching strategy or `未匹配 ×N`;
-- elapsed time;
-- last successful remote match;
-- last JLSS check and next scheduled check;
-- PDF verification status;
-- diagnostic explanation.
+| Action | Eligible states | Effect |
+| --- | --- | --- |
+| 重新获取 | Failed, stopped | Uses the current retrieval strategy; may submit again and consume JLSS quota. Existing usable PDFs are skipped. |
+| 重新核验 PDF | Needs review | Rechecks the existing attachment; never submits to JLSS. Inconclusive results remain in review. |
+| 确认 PDF 正确 | Needs review | After you inspect the PDF, marks it complete with a separate manual-verification label. Missing local attachments remain in review. |
+| 停止选中 | Active, waiting for login | Stops local processing. Remote requests may continue. |
+| 移除选中记录 | Completed, failed, stopped | Requires typing `清理`; removes only selected local records and retains Zotero attachments. |
 
-The summary also shows **⚠ 需关注** when a task has repeated remote-match failures or has exceeded the configured long-running threshold.
+**检查远端进度** checks already-submitted work without submitting new requests. **聚联登录** opens login and resumes waiting tasks after verification; already-submitted requests resume polling instead of resubmitting.
 
-Actions:
-
-- **立即检查聚联任务**;
-- **重试失败/需复核**;
-- **取消选中任务** — select using the first-column checkboxes;
-- **取消全部进行中**;
-- **清理已完成/失败/已取消** — 清除本地终止记录，但保留需复核记录和 Zotero 中已有的 PDF.
+Daily-quota failures have an explicit banner and a retry warning. FullTextFlow does not know the account's numeric quota or exact reset time. Failed tasks do not retry automatically. To clear all failed history, filter **失败**, select all visible results, then **移除选中记录**.
 
 Cancellation is a local FullTextFlow stop. If a request was already submitted to JLSS, the remote JLSS task may continue, but FullTextFlow will no longer poll or download it.
 
@@ -216,7 +198,7 @@ Cancellation is a local FullTextFlow stop. If a request was already submitted to
 - JLSS integration is **unofficial**. Observed endpoints are not documented as a stable public API and can change.
 - Use FullTextFlow only within your institution's literature-delivery permissions, quotas, and applicable terms.
 
-## Current version: 0.3.3 Preview
+## Current version: 0.4.0 Preview
 
 Implemented:
 

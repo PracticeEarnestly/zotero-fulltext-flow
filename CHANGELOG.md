@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 - 2026-10-25
+
+- Reorganize the task center around status filters, search, selection counts, and scoped actions. Terminal records can now be selected for retry/removal; hidden rows are never included.
+- Replace the 14-column table and numbered stages with a compact six-column table, actionable explanations, expandable diagnostics, and links to the Zotero item.
+- Separate retrying failed/stopped tasks from rechecking existing review PDFs. Removal still requires typing `清理` and preserves active/review records and PDF attachments.
+- Allow explicit manual confirmation after PDF inspection, recorded separately from automatic verification; missing attachments remain in review.
+- Explain JLSS daily-quota failures without assuming an account-specific limit or reset time. Saved tokens are no longer presented as proof of a valid session.
+- Fix retries being skipped after premature queue reset. Preserve excess batch entries, resume submitted tasks after login without resubmission, and ignore late state transitions after cancellation.
+
 ## 0.3.3 - 2026-10-25
 
 - Require typing `清理` before completed/failed/cancelled task records are removed, so dismissing or accidentally accepting a native dialog cannot clear task history.

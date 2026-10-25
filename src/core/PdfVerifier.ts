@@ -1,6 +1,6 @@
 import type { QueueEntry } from "./QueueStore";
 
-export type VerificationStatus = "verified" | "inconclusive" | "review";
+export type VerificationStatus = "verified" | "inconclusive" | "review" | "manual";
 
 export type VerificationResult = {
   status: VerificationStatus;

@@ -1,154 +1,82 @@
 <?xml version="1.0"?>
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
-<window
-  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-  xmlns:html="http://www.w3.org/1999/xhtml"
-  id="fulltextflow-task-window"
-  windowtype="fulltextflow:tasks"
-  title="FullTextFlow 任务中心"
-  persist="screenX screenY width height"
->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns:html="http://www.w3.org/1999/xhtml" id="fulltextflow-task-window"
+  windowtype="fulltextflow:tasks" title="FullTextFlow 任务中心" persist="screenX screenY width height">
   <script src="chrome://fulltextflow/content/task-manager.js"/>
   <html:style><![CDATA[
-    #table-wrap {
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow: auto;
-      border: 1px solid ThreeDShadow;
-      background: Field;
-      color: FieldText;
-    }
-
-    #tasks-table {
-      border-collapse: separate;
-      border-spacing: 0;
-      table-layout: fixed;
-      width: 2580px;
-      min-width: 2580px;
-      font: message-box;
-      font-size: 12px;
-    }
-
-    #tasks-table th,
-    #tasks-table td {
-      box-sizing: border-box;
-      padding: 6px 8px;
-      border-right: 1px solid ThreeDLightShadow;
-      border-bottom: 1px solid ThreeDLightShadow;
-      vertical-align: top;
-    }
-
-    #tasks-table thead th {
-      position: sticky;
-      top: 0;
-      z-index: 3;
-      background: -moz-Dialog;
-      color: -moz-DialogText;
-      font-weight: 600;
-      text-align: left;
-      white-space: nowrap;
-    }
-
-    #tasks-table tbody tr:nth-child(even) td {
-      background: rgba(128, 128, 128, 0.045);
-    }
-
-    #tasks-table tbody tr.warning td {
-      background: rgba(235, 170, 0, 0.12);
-    }
-
-    #tasks-table tbody tr.selected td {
-      background: rgba(70, 120, 200, 0.14);
-    }
-
-    #tasks-table tbody tr.cancelled td {
-      opacity: 0.68;
-    }
-
-    #tasks-table td.compact {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    #tasks-table td.wrap {
-      white-space: normal;
-      overflow-wrap: anywhere;
-      word-break: break-word;
-      line-height: 1.35;
-    }
-
-    #tasks-table td.center,
-    #tasks-table th.center {
-      text-align: center;
-    }
-
-    #tasks-table input[type="checkbox"] {
-      margin: 0;
-      vertical-align: middle;
-    }
-
-    #empty-row td {
-      padding: 28px 16px;
-      text-align: center;
-      opacity: 0.7;
-    }
+    .muted { opacity: .75; }
+    #summary, #active-summary, #selection-summary, #feedback { margin: 4px 0; }
+    #feedback { min-height: 20px; }
+    #feedback[data-error="true"] { color: #b03929; }
+    #quota-notice { padding: 10px; background: rgba(235,170,0,.15); margin: 8px 0; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+    .toolbar select, .toolbar input, .toolbar button { font: inherit; padding: 5px 8px; }
+    #search { flex: 1; min-width: 200px; }
+    #table-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid ThreeDShadow; background: Field; color: FieldText; }
+    #tasks-table { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: 100%; min-width: 880px; font: message-box; font-size: 13px; }
+    #tasks-table th, #tasks-table td { box-sizing: border-box; padding: 10px 8px; border-bottom: 1px solid ThreeDLightShadow; text-align: left; vertical-align: top; overflow-wrap: anywhere; line-height: 1.45; }
+    #tasks-table thead th { position: sticky; top: 0; z-index: 2; background: -moz-Dialog; color: -moz-DialogText; }
+    #tasks-table tr.selected > td { background: rgba(70,120,200,.14); }
+    #tasks-table tr.warning > td { border-left: 2px solid #c48b00; }
+    #tasks-table input[type="checkbox"] { margin: 3px 0; }
+    #tasks-table button { font: inherit; }
+    .paper { border: 0; padding: 0; background: transparent; color: LinkText; text-align: left; cursor: pointer; }
+    .paper:hover { text-decoration: underline; }
+    .state { font-weight: 600; }
+    .detail { font-size: 12px; opacity: .85; }
+    .details-cell { white-space: pre-wrap; background: rgba(128,128,128,.05); }
+    #empty-row td { padding: 32px; text-align: center; }
   ]]></html:style>
-
-  <vbox flex="1" style="padding: 12px; min-width: 980px; min-height: 600px;">
-    <description id="summary" style="font-weight: 600; margin-bottom: 3px;">正在读取任务概览…</description>
-    <description id="active-summary" style="margin-bottom: 9px; color: #555;">正在读取任务状态…</description>
-
-    <hbox style="margin-bottom: 8px; gap: 6px;">
-      <button id="poll" label="立即检查聚联任务"/>
-      <button id="retry" label="重试失败/需复核"/>
-      <button id="cancel-selected" label="取消选中任务"/>
-      <button id="cancel-all" label="取消全部进行中"/>
-      <button id="clear-finished" label="清理已完成/失败/已取消"/>
-      <spacer flex="1"/>
-      <button id="close" label="关闭"/>
-    </hbox>
-
-    <description style="margin-bottom: 6px; color: #666;">提示：任务列表每 2 秒自动刷新；表头固定，表格可横向/纵向滚动。使用首列复选框多选任务。“未匹配 ×N”表示连续 N 次未能把本地任务与聚联远端记录对应。</description>
-
+  <vbox flex="1" style="padding: 16px; min-width: 920px; min-height: 600px;">
+    <description style="font-size: 19px; font-weight: 600;">全文任务</description>
+    <description id="active-summary">正在读取任务…</description>
+    <description id="summary" class="muted"/>
+    <html:div id="quota-notice" role="status" hidden="hidden"/>
+    <html:div class="toolbar">
+      <html:label for="filter">任务状态</html:label>
+      <html:select id="filter" aria-label="按状态筛选任务">
+        <html:option value="all">全部</html:option>
+        <html:option value="active">进行中</html:option>
+        <html:option value="waiting_auth">等待登录</html:option>
+        <html:option value="failed">失败</html:option>
+        <html:option value="review">需复核</html:option>
+        <html:option value="done">已完成</html:option>
+        <html:option value="cancelled">已停止</html:option>
+      </html:select>
+      <html:input id="search" type="search" placeholder="搜索论文、原因或聚联任务号" aria-label="搜索任务"/>
+      <html:button id="poll" type="button">检查远端进度</html:button>
+      <html:button id="login" type="button">聚联登录</html:button>
+    </html:div>
+    <html:div class="toolbar">
+      <html:span id="selection-summary">未选择任务</html:span>
+      <html:button id="retry" type="button" disabled="disabled">重新获取</html:button>
+      <html:button id="recheck" type="button" disabled="disabled">重新核验 PDF</html:button>
+      <html:button id="confirm-reviewed" type="button" disabled="disabled">确认 PDF 正确</html:button>
+      <html:button id="cancel-selected" type="button" disabled="disabled">停止选中</html:button>
+      <html:button id="clear-selected" type="button" disabled="disabled">移除选中记录</html:button>
+      <html:button id="deselect" type="button" disabled="disabled">取消选择</html:button>
+    </html:div>
+    <description class="muted">失败任务已停止，可重新获取或移除记录。需复核任务请先打开论文检查 PDF。“停止”仅停止本地处理；“移除”保留 Zotero 附件。</description>
+    <html:div id="feedback" role="status" aria-live="polite"/>
     <html:div id="table-wrap">
-      <html:table id="tasks-table">
+      <html:table id="tasks-table" aria-label="全文任务列表">
         <html:colgroup>
-          <html:col style="width: 42px;"/>
-          <html:col style="width: 105px;"/>
-          <html:col style="width: 64px;"/>
-          <html:col style="width: 250px;"/>
-          <html:col style="width: 72px;"/>
-          <html:col style="width: 390px;"/>
-          <html:col style="width: 190px;"/>
-          <html:col style="width: 130px;"/>
-          <html:col style="width: 100px;"/>
-          <html:col style="width: 155px;"/>
-          <html:col style="width: 155px;"/>
-          <html:col style="width: 155px;"/>
-          <html:col style="width: 95px;"/>
-          <html:col style="width: 487px;"/>
+          <html:col style="width: 38px;"/><html:col style="width: 135px;"/>
+          <html:col style="width: 32%;"/><html:col/>
+          <html:col style="width: 140px;"/><html:col style="width: 64px;"/>
         </html:colgroup>
-        <html:thead>
-          <html:tr>
-            <html:th class="center" title="选择/取消选择当前可见任务"><html:input id="select-all" type="checkbox"/></html:th>
-            <html:th>状态</html:th>
-            <html:th>进度</html:th>
-            <html:th>当前阶段</html:th>
-            <html:th>来源</html:th>
-            <html:th>论文</html:th>
-            <html:th>聚联任务号/状态</html:th>
-            <html:th>远端匹配</html:th>
-            <html:th>已等待</html:th>
-            <html:th>最后匹配</html:th>
-            <html:th>上次检查</html:th>
-            <html:th>下次检查</html:th>
-            <html:th>核验</html:th>
-            <html:th>说明/诊断</html:th>
-          </html:tr>
-        </html:thead>
+        <html:thead><html:tr>
+          <html:th><html:input id="select-all" type="checkbox" aria-label="全选当前筛选结果"/></html:th>
+          <html:th>状态 / 来源</html:th><html:th>论文（点击定位）</html:th>
+          <html:th>当前情况 / 下一步</html:th><html:th>最后更新</html:th><html:th>详情</html:th>
+        </html:tr></html:thead>
         <html:tbody id="tasks-body"/>
       </html:table>
     </html:div>
+    <hbox style="margin-top: 8px;" align="center">
+      <description class="muted">列表每 2 秒刷新；远端检查按后台轮询间隔执行。切换筛选或搜索会取消选择。</description>
+      <spacer flex="1"/><button id="close" label="关闭"/>
+    </hbox>
   </vbox>
 </window>

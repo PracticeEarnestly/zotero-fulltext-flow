@@ -20,3 +20,7 @@ export function isTerminalState(state: QueueState): boolean {
 export function isClearableState(state: QueueState): boolean {
   return CLEARABLE_STATES.has(state);
 }
+
+export function isRetryableState(state: QueueState): boolean {
+  return state === "failed" || state === "cancelled";
+}

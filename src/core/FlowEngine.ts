@@ -2,7 +2,8 @@ import { TASK_FAILED, TASK_SUCCESS, PREF_PREFIX } from "../config";
 import { JLSSClient, JLSSAuthRequiredError } from "./JLSSClient";
 import { extractItemMetadata, normalizeQuery, type ItemMetadata } from "./Metadata";
 import { PdfImporter } from "./PdfImporter";
-import { QueueStore, type QueueEntry } from "./QueueStore";
+import { QueueStore, type QueueEntry, type QueueTarget } from "./QueueStore";
+import { isRetryableState } from "./QueueStates";
 import { hasUsablePDF } from "./AttachmentDetector";
 import { NativeFullText } from "./NativeFullText";
 import { PdfVerifier } from "./PdfVerifier";
@@ -31,7 +32,7 @@ export class FlowEngine {
     this.timer = null;
   }
 
-  async enqueueMetadata(list: ItemMetadata[]): Promise<{queued: number; native: number; skipped: number; failed: number; waitingAuth: number}> {
+  async enqueueMetadata(list: ItemMetadata[], resumeWaitingAuth = false): Promise<{queued: number; native: number; skipped: number; failed: number; waitingAuth: number}> {
     let queued = 0, native = 0, skipped = 0, failed = 0, waitingAuth = 0;
     const generation = this.cancelGeneration;
     const maxBatch = Math.max(1, Number(Zotero.Prefs.get(`${PREF_PREFIX}.maxBatch`) || 50));
@@ -44,8 +45,9 @@ export class FlowEngine {
       if (!item || await hasUsablePDF(item)) { skipped++; continue; }
 
       const existing = QueueStore.load().find(e => e.libraryID === metadata.libraryID && e.itemKey === metadata.itemKey);
-      if (existing && !["failed", "review", "done", "cancelled"].includes(existing.state)) { skipped++; continue; }
-      if (existing && ["done", "cancelled"].includes(existing.state) && !(await hasUsablePDF(item))) {
+      if (existing && !["failed", "review", "done", "cancelled"].includes(existing.state)
+        && !(resumeWaitingAuth && existing.state === "waiting_auth")) { skipped++; continue; }
+      if (existing) {
         QueueStore.resetForRetry(metadata.itemKey, metadata.libraryID);
       }
 
@@ -146,6 +148,7 @@ export class FlowEngine {
         await this.delay(650);
       }
       catch (e) {
+        if (QueueStore.isCancelled(metadata.itemKey, metadata.libraryID)) continue;
         if (e instanceof JLSSAuthRequiredError) {
           QueueStore.patch(metadata.itemKey, metadata.libraryID, {
             state: "waiting_auth",
@@ -184,56 +187,94 @@ export class FlowEngine {
     return this.enqueueMetadata(list);
   }
 
-  async retryProblemEntries(): Promise<{queued: number; native: number; skipped: number; failed: number; waitingAuth: number}> {
-    const problem = QueueStore.load().filter(e => ["failed", "review", "waiting_auth"].includes(e.state));
+  async retryProblemEntries(targets: QueueTarget[]): Promise<{queued: number; native: number; skipped: number; failed: number; waitingAuth: number}> {
+    const keys = new Set(targets.map(e => `${e.libraryID}:${e.itemKey}`));
+    const problem = QueueStore.load().filter(e => keys.has(`${e.libraryID}:${e.itemKey}`) && isRetryableState(e.state));
     const list: ItemMetadata[] = [];
+    let skipped = 0;
     for (const entry of problem) {
       const item: any = Zotero.Items.get(entry.itemID);
-      if (!item?.isRegularItem?.()) continue;
-
-      if (entry.state === "review" && entry.attachmentID) {
-        const attachment: any = Zotero.Items.get(entry.attachmentID);
-        if (attachment) {
-          try {
-            const verification = await PdfVerifier.verify(attachment, entry);
-            QueueStore.patch(entry.itemKey, entry.libraryID, {
-              state: verification.status === "review" ? "review" : "done",
-              verification: verification.status,
-              verificationReason: verification.reason,
-              error: verification.status === "review" ? entry.error : undefined
-            });
-            if (verification.status !== "review") continue;
-          }
-          catch (_) {
-            // Fall through. If the attachment has disappeared, a normal retry can fetch again.
-          }
-        }
-      }
-
-      if (await hasUsablePDF(item)) continue;
-      QueueStore.resetForRetry(entry.itemKey, entry.libraryID);
-      list.push(extractItemMetadata(item));
+      if (!item?.isRegularItem?.() || await hasUsablePDF(item)) { skipped++; continue; }
+      const metadata = extractItemMetadata(item);
+      if (metadata.queryText) list.push(metadata);
+      else skipped++;
     }
-    return this.enqueueMetadata(list);
+    const maxBatch = Math.max(1, Number(Zotero.Prefs.get(`${PREF_PREFIX}.maxBatch`) || 50));
+    const result = await this.enqueueMetadata(list);
+    result.skipped += skipped + Math.max(0, list.length - maxBatch);
+    return result;
+  }
+
+  async recheckSelected(targets: QueueTarget[]) {
+    const keys = new Set(targets.map(e => `${e.libraryID}:${e.itemKey}`));
+    const entries = QueueStore.load().filter(e => e.state === "review" && keys.has(`${e.libraryID}:${e.itemKey}`));
+    let verified = 0, review = 0;
+    for (const entry of entries) {
+      try {
+        const attachment = entry.attachmentID ? Zotero.Items.get(entry.attachmentID) : null;
+        if (!attachment) throw new Error("原 PDF 附件已不存在，请在 Zotero 中检查条目。");
+        const result = await PdfVerifier.verify(attachment, entry);
+        const confirmed = result.status === "verified";
+        QueueStore.patch(entry.itemKey, entry.libraryID, {
+          state: confirmed ? "done" : "review",
+          verification: result.status,
+          verificationReason: result.reason,
+          error: undefined,
+          diagnosticMessage: undefined,
+          diagnosticLevel: confirmed ? null : "warning"
+        });
+        if (confirmed) verified++; else review++;
+      }
+      catch (error) {
+        QueueStore.patch(entry.itemKey, entry.libraryID, {
+          verificationReason: error instanceof Error ? error.message : String(error),
+          diagnosticLevel: "warning"
+        });
+        review++;
+      }
+    }
+    return { verified, review };
+  }
+
+  async confirmReviewed(targets: QueueTarget[]) {
+    const keys = new Set(targets.map(e => `${e.libraryID}:${e.itemKey}`));
+    const entries = QueueStore.load().filter(e => e.state === "review" && keys.has(`${e.libraryID}:${e.itemKey}`));
+    let confirmed = 0, missing = 0;
+    for (const entry of entries) {
+      const attachment: any = entry.attachmentID ? Zotero.Items.get(entry.attachmentID) : null;
+      const path = await attachment?.getFilePathAsync?.();
+      if (!path || !(await IOUtils.exists(path))) { missing++; continue; }
+      QueueStore.patch(entry.itemKey, entry.libraryID, {
+        state: "done", verification: "manual", verificationReason: "用户已人工核对 PDF 并确认与论文一致。",
+        error: undefined, diagnosticMessage: undefined, diagnosticLevel: null
+      });
+      confirmed++;
+    }
+    return { confirmed, missing };
   }
 
   async resumeAuthWaiting(): Promise<{queued: number; native: number; skipped: number; failed: number; waitingAuth: number}> {
     const waiting = QueueStore.load().filter(e => e.state === "waiting_auth");
     const list: ItemMetadata[] = [];
     for (const entry of waiting) {
+      if (entry.submittedAt || entry.taskUUID || entry.taskCode) {
+        QueueStore.patch(entry.itemKey, entry.libraryID, { state: "submitted", error: undefined });
+        continue;
+      }
       const item: any = Zotero.Items.get(entry.itemID);
       if (!item?.isRegularItem?.() || await hasUsablePDF(item)) continue;
-      QueueStore.resetForRetry(entry.itemKey, entry.libraryID);
       const md = extractItemMetadata(item);
       if (md.queryText) list.push(md);
     }
-    if (!list.length) return { queued: 0, native: 0, skipped: 0, failed: 0, waitingAuth: 0 };
-    return this.enqueueMetadata(list);
+    const result = list.length ? await this.enqueueMetadata(list, true)
+      : { queued: 0, native: 0, skipped: 0, failed: 0, waitingAuth: 0 };
+    await this.poll();
+    return result;
   }
 
   async poll() {
     if (this.polling) return;
-    const active = QueueStore.active().filter(e => e.source === "jlss" || ["submitted", "pending", "downloading"].includes(e.state));
+    const active = QueueStore.active().filter(e => ["submitted", "pending", "downloading"].includes(e.state));
     if (!active.length) return;
     this.polling = true;
     try {
@@ -386,6 +427,7 @@ export class FlowEngine {
     entry: { itemKey: string; libraryID: number },
     reason: string
   ): Promise<boolean> {
+    if (QueueStore.isCancelled(entry.itemKey, entry.libraryID)) return false;
     QueueStore.patch(entry.itemKey, entry.libraryID, {
       state: "native_search",
       diagnosticLevel: "info",
