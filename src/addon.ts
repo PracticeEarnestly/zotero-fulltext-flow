@@ -2,6 +2,7 @@ import { FlowEngine } from "./core/FlowEngine";
 import { AutoWatcher } from "./core/AutoWatcher";
 import { Menus } from "./ui/Menus";
 import { AuthManager } from "./core/AuthManager";
+import { DuplicateManager } from "./ui/DuplicateManager";
 
 export class FullTextFlowAddon {
   data = { initialized: false };
@@ -25,6 +26,7 @@ export class FullTextFlowAddon {
       this.engine.stop();
       this.watcher.stop();
       this.menus.unregisterAll();
+      DuplicateManager.close();
       this.data.initialized = false;
       delete (Zotero as any).FullTextFlow;
     }

@@ -14,6 +14,7 @@ ORDER = [
     "src/core/AuthManager.ts",
     "src/core/AttachmentDetector.ts",
     "src/core/AttachmentGuard.ts",
+    "src/core/DuplicateAttachments.ts",
     "src/core/Metadata.ts",
     "src/core/RetrievalStrategy.ts",
     "src/core/PdfVerifier.ts",
@@ -26,6 +27,7 @@ ORDER = [
     "src/core/CollectionScanner.ts",
     "src/core/FlowEngine.ts",
     "src/core/AutoWatcher.ts",
+    "src/ui/DuplicateManager.ts",
     "src/ui/TaskManager.ts",
     "src/ui/AuthWindow.ts",
     "src/ui/Menus.ts",
@@ -47,9 +49,9 @@ def fill(text: str, mapping: dict[str,str]) -> str:
     return text
 
 def validate_ui_sources():
-    for name in ["task-manager.xhtml", "auth-window.xhtml"]:
+    for name in ["task-manager.xhtml", "auth-window.xhtml", "duplicate-manager.xhtml"]:
         ET.parse(ROOT / "addon" / "content" / name)
-    for name in ["task-manager.js", "auth-window.js"]:
+    for name in ["task-manager.js", "auth-window.js", "duplicate-manager.js"]:
         subprocess.run(["node", "--check", str(ROOT / "addon" / "content" / name)], check=True, cwd=ROOT)
 
 def main():
@@ -102,7 +104,7 @@ def main():
     (BUILD / "bootstrap.js").write_text(bootstrap)
     (BUILD / "manifest.json").write_text(manifest)
     shutil.copy2(ROOT / "addon" / "prefs.js", BUILD / "prefs.js")
-    for name in ["task-manager.xhtml", "task-manager.js", "auth-window.xhtml", "auth-window.js"]:
+    for name in ["task-manager.xhtml", "task-manager.js", "auth-window.xhtml", "auth-window.js", "duplicate-manager.xhtml", "duplicate-manager.js"]:
         shutil.copy2(ROOT / "addon" / "content" / name, BUILD / "content" / name)
 
     out = ROOT / f"fulltextflow-{pkg['version']}.xpi"

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 - 2026-10-25
+
+- Add a dedicated same-parent duplicate PDF manager, available from Tools and the task center. Scan selected items or the captured library, group local equal-size/SHA-256 PDFs, inspect files, choose keepers, and explicitly select copies for recoverable trash.
+- Protect attachments with Zotero annotations/notes (including trashed child records), linked files, shared paths, and insufficient permissions. Never merge across parent items or permanently erase files.
+- Require typed confirmation and revalidate each group against trusted scan snapshots, then check live metadata inside the Zotero transaction. Report skipped files and partial batch failures; retain at least the chosen keeper. Scanning is cancellable and makes no attachment changes.
+- Add isolated UI preview and regression tests for same-parent scope, stale files/metadata, protected attachments, cancellation, keeper selection, confirmation, and accurate failure feedback.
+
 ## 0.4.2 - 2026-10-25
 
 - Serialize native and JLSS downloads per library/item, and recheck local PDFs inside the lock before download and again immediately before import.

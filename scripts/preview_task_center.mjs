@@ -38,6 +38,7 @@ createServer((request, response) => {
     window.arguments = [{wrappedJSObject: {
       getRows: () => rows, getOverview: async () => ({strategyLabel:'聚联优先 → Zotero 后补',hasToken:true}),
       poll: async () => {}, openLogin: () => alert('演示：打开聚联登录'), locate: () => alert('演示：定位 Zotero 条目'),
+      openDuplicates: () => alert('重复 PDF 隔离预览：运行 node scripts/preview_duplicate_manager.mjs'),
       clearSelected: targets => { const keys = new Set(targets.map(key)); const before = rows.length; rows = rows.filter(r => !keys.has(key(r)) || !r.canClear); return before - rows.length; },
       cancelOne: (itemKey, libraryID) => {const row = rows.find(r => r.itemKey === itemKey && r.libraryID === libraryID); if(!row?.canCancel)return false; Object.assign(row,{state:'cancelled',canCancel:false,canRetry:true,canClear:true});return true;},
       retrySelected: async targets => ({queued:targets.length,native:0,failed:0,waitingAuth:0,skipped:0}),

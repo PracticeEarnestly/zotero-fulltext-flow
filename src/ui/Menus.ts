@@ -5,6 +5,7 @@ import { JLSSClient } from "../core/JLSSClient";
 import { AuthManager } from "../core/AuthManager";
 import { AuthWindow } from "./AuthWindow";
 import { TaskManager } from "./TaskManager";
+import { DuplicateManager } from "./DuplicateManager";
 import { getRetrievalStrategy, RETRIEVAL_STRATEGY_OPTIONS, retrievalStrategyLabel, setRetrievalStrategy } from "../core/RetrievalStrategy";
 
 export class Menus {
@@ -30,7 +31,7 @@ export class Menus {
       "fulltextflow-item", "fulltextflow-item-sep",
       "fulltextflow-collection-root", "fulltextflow-collection-sep",
       "fulltextflow-tools-settings", "fulltextflow-tools-login", "fulltextflow-tools-token",
-      "fulltextflow-tools-tasks", "fulltextflow-tools-strategy"
+      "fulltextflow-tools-tasks", "fulltextflow-tools-strategy", "fulltextflow-tools-duplicates"
     ]) doc.getElementById(id)?.remove();
     this.windows.delete(win);
   }
@@ -109,7 +110,9 @@ export class Menus {
     const strategy = this.strategyMenu(win, "FullTextFlow 全文获取策略", "fulltextflow-tools-strategy");
     const tasks = this.menuItem(win, "FullTextFlow 任务中心", () => TaskManager.open(win, this.engine));
     tasks.id = "fulltextflow-tools-tasks";
-    popup.append(login, settings, token, strategy, tasks);
+    const duplicates = this.menuItem(win, "FullTextFlow 重复 PDF", () => DuplicateManager.open(win));
+    duplicates.id = "fulltextflow-tools-duplicates";
+    popup.append(login, settings, token, strategy, tasks, duplicates);
   }
 
   private strategyMenu(win: any, label: string, id: string) {

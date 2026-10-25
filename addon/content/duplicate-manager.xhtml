@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+ xmlns:html="http://www.w3.org/1999/xhtml" id="fulltextflow-duplicate-window"
+ windowtype="fulltextflow:duplicates" title="FullTextFlow 重复 PDF" persist="screenX screenY width height">
+ <script src="chrome://fulltextflow/content/duplicate-manager.js"/>
+ <html:style><![CDATA[
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+  button, select { font: inherit; padding: 5px 9px; }
+  #groups { overflow: auto; flex: 1; min-height: 0; }
+  .group { border: 1px solid ThreeDShadow; border-radius: 6px; margin: 12px 0; padding: 12px; background: Field; color: FieldText; }
+  .group h3 { margin: 0 0 8px; font-size: 15px; }
+  .hash, .path { overflow-wrap: anywhere; font-size: 12px; opacity: .8; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid ThreeDShadow; vertical-align: top; }
+  th:first-child, th:nth-child(2) { width: 55px; }
+  .reason { color: #a34419; font-size: 12px; }
+  #feedback { white-space: pre-wrap; margin: 6px 0; }
+  #feedback[data-error="true"] { color: #a34419; }
+  #coverage { max-height: 90px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
+  .hint { opacity: .8; line-height: 1.5; }
+ ]]></html:style>
+ <vbox flex="1" style="padding: 16px; min-width: 800px; min-height: 550px;">
+  <description style="font-size: 20px; font-weight: 600;">同一条目 · 重复 PDF</description>
+  <html:div class="hint">只比较本地 PDF 的完整 SHA-256 内容，不按标题或文件名删除。跨条目重复、不同版本全文不处理。</html:div>
+  <html:div id="scope-label"/>
+  <html:div class="toolbar">
+   <html:label for="scope">扫描范围</html:label>
+   <html:select id="scope"><html:option value="selected">打开窗口时选中的条目</html:option><html:option value="library">整个当前资料库</html:option></html:select>
+   <html:button id="scan">扫描重复 PDF</html:button>
+   <html:button id="cancel" disabled="disabled">取消扫描</html:button>
+  </html:div>
+  <html:div id="feedback" role="status" aria-live="polite">扫描不会修改附件。</html:div>
+  <html:div id="coverage"/>
+  <html:div id="groups"><html:p>先扫描，再选择每组保留的附件。不会默认勾选任何待清理副本。</html:p></html:div>
+  <html:div class="toolbar">
+   <html:button id="choose" disabled="disabled">勾选可清理副本</html:button>
+   <html:button id="clear" disabled="disabled">取消勾选</html:button>
+   <html:span id="selection">已选 0 个副本</html:span>
+   <html:button id="trash" disabled="disabled">将选中副本移入回收站…</html:button>
+  </html:div>
+  <html:div class="hint">批注、笔记及链接文件受保护；不会合并批注。确认前请关闭正在编辑的 PDF。操作可在 Zotero 回收站恢复，也会随 Zotero 同步；清空回收站前请确认保留副本可用。Zotero 自身的回收站保留设置仍然有效。</html:div>
+ </vbox>
+</window>

@@ -1,6 +1,6 @@
 # FullTextFlow for Zotero
 
-**Current preview: 0.4.2**
+**Current preview: 0.5.0**
 
 **FullTextFlow** is a Zotero plugin for selectively completing missing full-text PDFs at the **Collection** level. It is intended for research libraries where only high-priority project folders need complete PDFs.
 
@@ -11,6 +11,22 @@ The initial Zotero–JLSS workflow design was informed by the open GitHub projec
 **FullTextFlow 任务中心** combines overview and task management. Version 0.4.0 adds status filters, search, scoped selection, and separate retry/recheck/stop/remove actions. The list refreshes every two seconds; remote polling follows the configured interval. A saved token does not prove the session is still valid.
 
 **Zotero compatibility:** version 0.4.0 supports Zotero 7–10. On Zotero 10, Collection actions use the plural selection API and can safely process one or more selected Collections without relying on removed single-selection getters.
+
+## 同一条目下的重复 PDF 清理（0.5.0）
+
+入口：**工具 → FullTextFlow 重复 PDF**，或任务中心的 **重复 PDF** 按钮。
+
+1. 选择打开窗口时选中的条目，或该资料库的全部条目，点击 **扫描重复 PDF**。窗口固定扫描范围；更换资料库或选中条目后请关闭并重新打开窗口。
+2. 同一父条目下，只有大小和完整 SHA-256 一致的本地 PDF 才分为一组。跨条目重复、不同内容的 PDF、云端缺失文件不会自动合并或下载。读取失败会列出原因。
+3. 每组可打开 PDF、定位父条目、指定保留副本。优先将有批注或笔记的副本设为保留，默认不勾选任何待清理附件。
+4. 手动勾选，或点击 **勾选可清理副本**。有 Zotero 批注或笔记（包括已在回收站中的子记录）、链接文件、共享同一路径、无权限的附件不能在此清理。不会迁移或合并批注。
+5. 点击 **将选中副本移入回收站…**，输入 `移入回收站` 确认。插件重新核验文件路径、大小、修改时间、SHA-256、归属和批注，再通过 Zotero 的回收站 API 操作。若一组核验失败，该组不处理；其他已完成组会单独报告。
+
+保留副本和父条目不变；清理不调用永久删除、不清空回收站。可从 Zotero 回收站恢复，操作会随 Zotero 同步，Zotero 自身回收站保留设置仍适用。请先关闭正在编辑的 PDF，并避免与外部修改、同步移动附件同时操作：文件系统检查与 Zotero 数据库事务无法组成跨应用的原子锁。
+
+显示的 MiB 是副本逻辑大小，不代表立即节省磁盘空间。回收站未清空时文件仍保留；实际占用还受文件系统克隆、快照等影响。确认保留副本可用后，再自行决定是否清空回收站。
+
+隔离界面预览：`node scripts/preview_duplicate_manager.mjs`，仅使用虚构数据，不连接 Zotero。测试：`npm test`；构建：`npm run build:local`。
 
 ## Core idea
 
@@ -218,7 +234,7 @@ For linked files using Zotero's relative base path, also provide `--base-dir /pa
 - JLSS integration is **unofficial**. Observed endpoints are not documented as a stable public API and can change.
 - Use FullTextFlow only within your institution's literature-delivery permissions, quotas, and applicable terms.
 
-## Current version: 0.4.2 Preview
+## Current version: 0.5.0 Preview
 
 Implemented:
 

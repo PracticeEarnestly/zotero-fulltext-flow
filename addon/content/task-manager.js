@@ -240,6 +240,7 @@
       await api.poll(); feedback("已请求检查远端进度；请查看任务状态。检查进度不会重新提交任务。");
     }));
     $("login").addEventListener("click", () => run(() => api.openLogin()));
+    $("duplicates").addEventListener("click", () => run(() => api.openDuplicates()));
     $("deselect").addEventListener("click", () => { selected.clear(); render(true); });
     $("select-all").addEventListener("change", () => {
       for (const row of visible) {

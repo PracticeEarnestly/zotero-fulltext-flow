@@ -1,6 +1,6 @@
 {
   "name": "zotero-fulltext-flow",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "Collection-scoped full-text completion for Zotero with configurable Zotero/JLSS retrieval strategies, dual web/API session verification, remote-task diagnostics, cancellation controls, stable task-table UI, verification, and secure authentication.",

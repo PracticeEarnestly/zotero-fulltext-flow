@@ -6,6 +6,7 @@ import type { FlowEngine } from "../core/FlowEngine";
 import type { QueueTarget } from "../core/QueueStore";
 import { isClearableState, isRetryableState, isTerminalState } from "../core/QueueStates";
 import { AuthWindow } from "./AuthWindow";
+import { DuplicateManager } from "./DuplicateManager";
 import { isDailyQuotaError } from "../core/QuotaRetry";
 
 export class TaskManager {
@@ -72,6 +73,7 @@ export class TaskManager {
       confirmReviewed: (targets: QueueTarget[]) => engine.confirmReviewed(targets),
       scheduleQuotaSelected: (targets: QueueTarget[]) => engine.scheduleQuotaSelected(targets),
       openLogin: () => AuthWindow.open(win, engine),
+      openDuplicates: () => DuplicateManager.open(win),
       locate: async (itemKey: string, libraryID: number) => {
         const entry = QueueStore.find(itemKey, Number(libraryID));
         if (!entry || !Zotero.Items.get(entry.itemID)) throw new Error("Zotero 条目已不存在。");
