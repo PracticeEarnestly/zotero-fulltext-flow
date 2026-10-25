@@ -1,6 +1,6 @@
 # FullTextFlow for Zotero
 
-**Current preview: 0.4.1**
+**Current preview: 0.4.2**
 
 **FullTextFlow** is a Zotero plugin for selectively completing missing full-text PDFs at the **Collection** level. It is intended for research libraries where only high-priority project folders need complete PDFs.
 
@@ -192,6 +192,22 @@ Cancellation is a local FullTextFlow stop. If a request was already submitted to
 
 ## Safety and limits
 
+### Duplicate PDF protection (0.4.2)
+
+FullTextFlow serializes native and JLSS retrieval for the same library/item. It checks for an existing local PDF inside that lock before downloading. JLSS files are downloaded into a private temporary directory and checked for PDF structure before being imported into Zotero.
+
+After download it reads the item's attachments again and compares SHA-256 fingerprints. If an identical PDF arrived meanwhile, it reuses that attachment and discards only its own temporary file. If a different PDF arrived, it keeps the existing attachment, skips import, and flags the task for review. A final local-PDF check runs just before import. Verification errors after a committed import preserve the PDF for review rather than deleting it.
+
+The lock coordinates FullTextFlow's paths, not other plugins or Zotero sync. A different app can still race during the final asynchronous commit. Protection is per item: it does not automatically merge duplicate parent items, delete existing attachments, or deduplicate across libraries. PDF recognition still requires a local PDF attachment and does not distinguish supplementary PDFs or fetch cloud-only attachments on demand.
+
+To inspect existing duplicates without changing your library:
+
+```sh
+python3 scripts/audit_pdf_duplicates.py --data-dir /path/to/Zotero --output /path/to/new-report-folder
+```
+
+For linked files using Zotero's relative base path, also provide `--base-dir /path/to/base`. The script validates a private database snapshot, excludes trashed records, hashes size-matched local PDFs, and writes `report.md` plus full `duplicates.json`. It reports missing/unreadable files rather than treating them as unique. SHA-256 equality means equal file content, not interchangeable parent items, annotations or notes; review those before deciding whether to remove anything. Space estimates are logical byte counts and do not account for APFS clone sharing, snapshots or cloud copies.
+
 - Default maximum items processed per manual batch: **50**.
 - Default JLSS poll interval: **5 minutes**.
 - Default confirmed-pending warning threshold: **24 hours**.
@@ -202,7 +218,7 @@ Cancellation is a local FullTextFlow stop. If a request was already submitted to
 - JLSS integration is **unofficial**. Observed endpoints are not documented as a stable public API and can change.
 - Use FullTextFlow only within your institution's literature-delivery permissions, quotas, and applicable terms.
 
-## Current version: 0.4.1 Preview
+## Current version: 0.4.2 Preview
 
 Implemented:
 

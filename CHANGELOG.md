@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.2 - 2026-10-25
+
+- Serialize native and JLSS downloads per library/item, and recheck local PDFs inside the lock before download and again immediately before import.
+- Stage JLSS downloads in private temporary storage, validate PDF structure, and compare SHA-256 content fingerprints against same-item PDFs that arrived during download. Reuse identical attachments and discard only the temporary copy; different arriving PDFs are preserved and flagged for review.
+- Keep committed attachments on later verification errors instead of deleting them. Existing PDFs, annotations and cross-item attachments are never automatically removed by deduplication.
+- Add a read-only duplicate audit script producing full JSON and Markdown reports with file hashes, paths, parent items, annotation counts, missing-file coverage, and logical redundant-byte estimates.
+
+
 ## 0.4.1 - 2026-10-25
 
 - Preserve daily-quota rejections as `waiting_quota`, with a persisted next attempt at 00:10 the following local day. Background checks resume overdue work after restart; another quota rejection defers waiting tasks to the next day.

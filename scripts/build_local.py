@@ -13,6 +13,7 @@ ORDER = [
     "src/core/SecureStore.ts",
     "src/core/AuthManager.ts",
     "src/core/AttachmentDetector.ts",
+    "src/core/AttachmentGuard.ts",
     "src/core/Metadata.ts",
     "src/core/RetrievalStrategy.ts",
     "src/core/PdfVerifier.ts",

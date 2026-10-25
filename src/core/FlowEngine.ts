@@ -482,7 +482,7 @@ export class FlowEngine {
             verification: result.verification.status,
             verificationReason: result.verification.reason,
             diagnosticLevel: null,
-            diagnosticMessage: undefined,
+            diagnosticMessage: result.reused ? result.verification.reason : undefined,
             error: state === "review" ? "PDF 已下载，但身份核验未通过自动阈值，请人工核对。" : undefined
           });
         }

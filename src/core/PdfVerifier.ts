@@ -17,6 +17,13 @@ const STOPWORDS = new Set([
 export class PdfVerifier {
   static async verify(attachment: any, entry: QueueEntry): Promise<VerificationResult> {
     const path = await attachment.getFilePathAsync?.();
+    await this.verifyStructure(path);
+
+    const text = await this.extractText(attachment);
+    return this.verifyText(text, entry);
+  }
+
+  static async verifyStructure(path: string): Promise<void> {
     if (!path || !(await IOUtils.exists(path))) {
       throw new Error("下载后未找到本地 PDF 文件。");
     }
@@ -31,8 +38,9 @@ export class PdfVerifier {
     if (signature !== "%PDF-") {
       throw new Error("下载文件不是有效 PDF。  ");
     }
+  }
 
-    const text = await this.extractText(attachment);
+  private static verifyText(text: string, entry: QueueEntry): VerificationResult {
     if (!text.trim()) {
       return {
         status: "inconclusive",

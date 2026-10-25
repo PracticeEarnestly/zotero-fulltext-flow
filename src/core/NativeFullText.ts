@@ -1,4 +1,5 @@
-import { hasUsablePDF } from "./AttachmentDetector";
+import { hasUsablePDF, localPDFAttachments } from "./AttachmentDetector";
+import { AttachmentGuard } from "./AttachmentGuard";
 
 export type NativeLookupResult = {
   found: boolean;
@@ -12,9 +13,14 @@ export type NativeLookupResult = {
  */
 export class NativeFullText {
   static async tryFind(item: any): Promise<NativeLookupResult> {
+    return AttachmentGuard.withItemLock(item, () => this.findLocked(item));
+  }
+
+  private static async findLocked(item: any): Promise<NativeLookupResult> {
     try {
       if (!item?.isRegularItem?.()) return { found: false };
-      if (await hasUsablePDF(item)) return { found: true };
+      const existing = (await localPDFAttachments(item))[0];
+      if (existing) return { found: true, attachmentID: Number(existing.attachment.id) };
 
       const attachments: any = (Zotero as any).Attachments;
       if (!attachments?.addAvailableFile) {
