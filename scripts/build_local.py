@@ -17,6 +17,7 @@ ORDER = [
     "src/core/RetrievalStrategy.ts",
     "src/core/PdfVerifier.ts",
     "src/core/QueueStates.ts",
+    "src/core/QuotaRetry.ts",
     "src/core/QueueStore.ts",
     "src/core/JLSSClient.ts",
     "src/core/NativeFullText.ts",

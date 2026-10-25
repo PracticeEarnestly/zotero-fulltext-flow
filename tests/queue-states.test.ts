@@ -7,6 +7,7 @@ const allStates: QueueState[] = [
   "queued",
   "native_search",
   "waiting_auth",
+  "waiting_quota",
   "submitted",
   "pending",
   "downloading",
@@ -27,7 +28,7 @@ test("review remains terminal but is preserved by cleanup", () => {
 });
 
 test("active states remain neither terminal nor clearable", () => {
-  for (const state of ["queued", "native_search", "waiting_auth", "submitted", "pending", "downloading"] as QueueState[]) {
+  for (const state of ["queued", "native_search", "waiting_auth", "waiting_quota", "submitted", "pending", "downloading"] as QueueState[]) {
     assert.equal(isTerminalState(state), false, `${state} should remain active`);
     assert.equal(isClearableState(state), false, `${state} should not be cleared`);
   }

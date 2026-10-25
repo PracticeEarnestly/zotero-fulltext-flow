@@ -50,7 +50,7 @@ export class Menus {
       Services.prompt.alert(
         win,
         PLUGIN_NAME,
-        `获取策略：${strategyLabel}\nZotero 获取 ${result.native} 篇；提交聚联 ${result.queued} 篇；等待登录 ${result.waitingAuth} 篇；跳过 ${result.skipped} 篇；失败 ${result.failed} 篇。`
+        `获取策略：${strategyLabel}\nZotero 获取 ${result.native} 篇；提交聚联 ${result.queued} 篇；等待额度 ${result.waitingQuota} 篇；等待登录 ${result.waitingAuth} 篇；跳过 ${result.skipped} 篇；失败 ${result.failed} 篇。`
       );
       if (result.waitingAuth) await AuthWindow.open(win, this.engine);
     });

@@ -26,7 +26,7 @@ class Element {
 }
 const fixture = (key: string, state: string, extra = {}) => ({
   itemKey: key, libraryID: 1, title: key, state,
-  canCancel: ["queued", "submitted", "pending", "waiting_auth"].includes(state),
+  canCancel: ["queued", "submitted", "pending", "waiting_auth", "waiting_quota"].includes(state),
   canRetry: ["failed", "cancelled"].includes(state), canClear: ["done", "failed", "cancelled"].includes(state),
   canRecheck: state === "review", ...extra
 });
@@ -34,7 +34,7 @@ async function setup(rows: any[]) {
   const markup = readFileSync(new URL("../addon/content/task-manager.xhtml", import.meta.url), "utf8");
   const elements = new Map([...markup.matchAll(/\bid="([^"]+)"/g)].map(match => [match[1], new Element()]));
   const get = (id: string) => elements.get(id)!;
-  get("filter").options = ["all", "active", "waiting_auth", "failed", "review", "done", "cancelled"].map(value => ({ value, textContent: "" }));
+  get("filter").options = ["all", "active", "waiting_auth", "waiting_quota", "failed", "review", "done", "cancelled"].map(value => ({ value, textContent: "" }));
   get("filter").value = "all";
   const calls: any[] = [];
   const api = {
@@ -43,6 +43,7 @@ async function setup(rows: any[]) {
     retrySelected: async (targets: any) => { calls.push(["retry", targets]); return { queued: targets.length, native: 0, failed: 0, skipped: 0, waitingAuth: 0 }; },
     recheckSelected: async (targets: any) => { calls.push(["recheck", targets]); return { verified: 0, review: targets.length }; },
     confirmReviewed: async (targets: any) => { calls.push(["confirmReviewed", targets]); return { confirmed: targets.length, missing: 0 }; },
+    scheduleQuotaSelected: (targets: any) => { calls.push(["scheduleQuota", targets]); return targets.length; },
     cancelOne: (itemKey: string, libraryID: number) => { calls.push(["cancel", { itemKey, libraryID }]); return true; },
     locate: async () => {}, poll: async () => {}, openLogin: async () => {}
   };
@@ -155,4 +156,21 @@ test("manual confirmation requires explicit acknowledgement and only targets rev
   ui.window.confirm = () => true;
   await ui.get("confirm-reviewed").fire("click");
   assert.equal(JSON.stringify(ui.calls), JSON.stringify([["confirmReviewed", [{ itemKey: "A", libraryID: 1 }]]]));
+});
+
+test("quota scheduling only enrolls selected eligible failures and can be cancelled", async () => {
+  const ui = await setup([fixture("A", "failed", { canScheduleQuota: true }), fixture("B", "failed"), fixture("C", "waiting_quota", { retryAfter: "2026-10-26T00:10:00Z" })]);
+  await ui.selectAll();
+  assert.equal(ui.get("schedule-quota").textContent, "次日自动获取（1）");
+  ui.window.confirm = () => false;
+  await ui.get("schedule-quota").fire("click");
+  assert.equal(ui.calls.length, 0);
+  ui.window.confirm = () => true;
+  await ui.get("schedule-quota").fire("click");
+  assert.equal(JSON.stringify(ui.calls), JSON.stringify([["scheduleQuota", [{ itemKey: "A", libraryID: 1 }]]]));
+  await ui.filter("waiting_quota");
+  await ui.selectAll();
+  assert.equal(ui.get("retry").disabled, true);
+  assert.equal(ui.get("clear-selected").disabled, true);
+  assert.equal(ui.get("cancel-selected").disabled, false);
 });

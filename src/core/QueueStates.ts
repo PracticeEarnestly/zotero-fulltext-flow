@@ -2,6 +2,7 @@ export type QueueState =
   | "queued"
   | "native_search"
   | "waiting_auth"
+  | "waiting_quota"
   | "submitted"
   | "pending"
   | "downloading"

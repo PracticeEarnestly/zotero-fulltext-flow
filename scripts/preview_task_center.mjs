@@ -11,6 +11,7 @@ const rows = states.map((state, index) => ({
   reason: state === "failed" ? "当日传递次数已达上限" : state === "review" ? "PDF 已下载，但标题匹配较低，请核对附件。" : "",
   canCancel: ["pending", "waiting_auth"].includes(state),
   canRetry: ["failed", "cancelled"].includes(state),
+  canScheduleQuota: state === "failed",
   canClear: ["failed", "done", "cancelled"].includes(state), canRecheck: state === "review"
 }));
 createServer((request, response) => {
@@ -41,10 +42,11 @@ createServer((request, response) => {
       cancelOne: (itemKey, libraryID) => {const row = rows.find(r => r.itemKey === itemKey && r.libraryID === libraryID); if(!row?.canCancel)return false; Object.assign(row,{state:'cancelled',canCancel:false,canRetry:true,canClear:true});return true;},
       retrySelected: async targets => ({queued:targets.length,native:0,failed:0,waitingAuth:0,skipped:0}),
       recheckSelected: async targets => ({verified:0,review:targets.length}),
-      confirmReviewed: async targets => ({confirmed:targets.length,missing:0})
+      confirmReviewed: async targets => ({confirmed:targets.length,missing:0}),
+      scheduleQuotaSelected: targets => { const keys = new Set(targets.map(key)); const date = new Date(); date.setDate(date.getDate()+1); date.setHours(0,10,0,0); let count=0; for(const row of rows) if(keys.has(key(row)) && row.canScheduleQuota) {Object.assign(row,{state:'waiting_quota',canCancel:true,canRetry:false,canClear:false,canScheduleQuota:false,retryAfter:date.toISOString()});count++;} return count; }
     }}];`;
   response.setHeader("Content-Type", "text/html; charset=utf-8");
-  response.end(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>FullTextFlow 0.4.0 隔离预览</title><style>${style}
+  response.end(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>FullTextFlow 隔离预览</title><style>${style}
     body{margin:0;font:13px system-ui;background:#fafafa;color:#222}.window{padding:16px;min-width:920px;display:flex;flex-direction:column;height:calc(100vh - 32px)}
     #table-wrap{min-height:240px}#tasks-table{font-family:system-ui}#tasks-table th{background:#f0f1f3}button{cursor:pointer}button:disabled{cursor:default}
   </style><script>${bridge}</script><script src="/task-manager.js"></script></head><body>${body}</body></html>`);

@@ -6,6 +6,7 @@ import type { FlowEngine } from "../core/FlowEngine";
 import type { QueueTarget } from "../core/QueueStore";
 import { isClearableState, isRetryableState, isTerminalState } from "../core/QueueStates";
 import { AuthWindow } from "./AuthWindow";
+import { isDailyQuotaError } from "../core/QuotaRetry";
 
 export class TaskManager {
   static open(win: any, engine: FlowEngine) {
@@ -37,6 +38,8 @@ export class TaskManager {
         canRetry: isRetryableState(e.state),
         canClear: isClearableState(e.state),
         canRecheck: e.state === "review",
+        canScheduleQuota: e.state === "failed" && !e.submittedAt && !e.taskUUID && !e.taskCode
+          && isDailyQuotaError(`${e.error || ""} ${e.diagnosticMessage || ""}`),
         source: e.source || "",
         verification: e.verification || "",
         reason: e.verificationReason || e.error || e.cancelNote || e.nativeError || "",
@@ -45,6 +48,7 @@ export class TaskManager {
         updatedAt: e.updatedAt,
         lastCheckedAt: e.lastCheckedAt || "",
         nextCheckAt: e.nextCheckAt || "",
+        retryAfter: e.retryAfter || "",
         taskCode: e.taskCode || "",
         remoteTaskStatus: e.remoteTaskStatus || "",
         remoteTaskStatusLabel: e.remoteTaskStatusLabel || "",
@@ -66,6 +70,7 @@ export class TaskManager {
       retrySelected: (targets: QueueTarget[]) => engine.retryProblemEntries(targets),
       recheckSelected: (targets: QueueTarget[]) => engine.recheckSelected(targets),
       confirmReviewed: (targets: QueueTarget[]) => engine.confirmReviewed(targets),
+      scheduleQuotaSelected: (targets: QueueTarget[]) => engine.scheduleQuotaSelected(targets),
       openLogin: () => AuthWindow.open(win, engine),
       locate: async (itemKey: string, libraryID: number) => {
         const entry = QueueStore.find(itemKey, Number(libraryID));

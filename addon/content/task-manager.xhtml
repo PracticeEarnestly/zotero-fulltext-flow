@@ -39,6 +39,7 @@
         <html:option value="all">全部</html:option>
         <html:option value="active">进行中</html:option>
         <html:option value="waiting_auth">等待登录</html:option>
+        <html:option value="waiting_quota">等待额度</html:option>
         <html:option value="failed">失败</html:option>
         <html:option value="review">需复核</html:option>
         <html:option value="done">已完成</html:option>
@@ -51,6 +52,7 @@
     <html:div class="toolbar">
       <html:span id="selection-summary">未选择任务</html:span>
       <html:button id="retry" type="button" disabled="disabled">重新获取</html:button>
+      <html:button id="schedule-quota" type="button" disabled="disabled">次日自动获取</html:button>
       <html:button id="recheck" type="button" disabled="disabled">重新核验 PDF</html:button>
       <html:button id="confirm-reviewed" type="button" disabled="disabled">确认 PDF 正确</html:button>
       <html:button id="cancel-selected" type="button" disabled="disabled">停止选中</html:button>

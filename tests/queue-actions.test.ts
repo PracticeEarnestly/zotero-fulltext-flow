@@ -23,7 +23,7 @@ function setup(initial: any[], options: any = {}) {
     IOUtils: { exists: async (path: string) => path === "existing.pdf" },
     setTimeout: () => 0, clearInterval: () => {}, setInterval: () => 0,
   };
-  const source = ["src/core/QueueStates.ts", "src/core/QueueStore.ts", "src/core/FlowEngine.ts"]
+  const source = ["src/core/QueueStates.ts", "src/core/QuotaRetry.ts", "src/core/QueueStore.ts", "src/core/FlowEngine.ts"]
     .map(path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8").replace(/^import .*$/gm, "").replace(/^export /gm, ""))
     .join("\n");
   const code = ts.transpileModule(source + "\nglobalThis.store = QueueStore; globalThis.Engine = FlowEngine;", { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
@@ -137,4 +137,71 @@ test("manual confirmation is distinct from automatic verification and requires a
   assert.equal(store.find("B", 1).state, "review");
   assert.equal(store.find("C", 1).state, "failed");
   assert.deepEqual(submitted, []);
+});
+
+test("quota exhaustion retains remaining batch and prevents repeated submissions", async () => {
+  const records = [entry("A", "failed"), entry("B", "failed"), entry("C", "failed")];
+  const { store, engine, submitted, prefs } = setup(records, { submit: async () => { throw new Error("当日传递次数已达上限"); } });
+  const result = await engine.retryProblemEntries(records);
+  assert.deepEqual(submitted, ["A"]);
+  assert.equal(result.waitingQuota, 3);
+  assert.equal(result.failed, 0);
+  for (const record of records) {
+    const saved = store.find(record.itemKey, 1);
+    assert.equal(saved.state, "waiting_quota");
+    assert.ok(Date.parse(saved.retryAfter) > Date.now());
+    assert.equal(saved.retryAfter, prefs.get("test.quotaRetryAfter"));
+  }
+  await engine.resumeQuotaWaiting();
+  assert.deepEqual(submitted, ["A"]);
+});
+
+test("persisted overdue quota work resumes after restart, respects batch limit and ignores stopped work", async () => {
+  const past = "2020-01-01T00:10:00Z";
+  const records = [entry("A", "waiting_quota", 1, { retryAfter: past }), entry("B", "waiting_quota", 1, { retryAfter: past }), entry("C", "cancelled", 1, { retryAfter: past })];
+  const { store, engine, submitted } = setup(records, { maxBatch: 1 });
+  await engine.resumeQuotaWaiting();
+  assert.deepEqual(submitted, ["A"]);
+  assert.equal(store.find("B", 1).state, "waiting_quota");
+  await engine.resumeQuotaWaiting();
+  assert.deepEqual(submitted, ["A", "B"]);
+  assert.equal(store.find("C", 1).state, "cancelled");
+});
+
+test("repeated quota exhaustion postpones all waiting rows even beyond current batch", async () => {
+  const records = ["A", "B"].map(key => entry(key, "waiting_quota", 1, { retryAfter: "2020-01-01T00:10:00Z" }));
+  const { store, engine, submitted } = setup(records, { maxBatch: 1, submit: async () => { throw new Error("当日传递次数已达上限"); } });
+  await Promise.all([engine.resumeQuotaWaiting(), engine.resumeQuotaWaiting()]);
+  assert.deepEqual(submitted, ["A"]);
+  assert.ok(Date.parse(store.find("B", 1).retryAfter) > Date.now());
+  assert.equal(store.find("A", 1).retryAfter, store.find("B", 1).retryAfter);
+});
+
+test("only selected legacy quota failures without remote submissions can be scheduled", () => {
+  const records = [entry("A", "failed", 1, { error: "当日传递次数已达上限" }), entry("B", "failed", 1, { error: "network error" }), entry("C", "failed", 1, { error: "当日传递次数已达上限", taskCode: "remote" }), entry("D", "failed", 1, { error: "当日传递次数已达上限" })];
+  const { store, engine } = setup(records);
+  assert.equal(engine.scheduleQuotaSelected(records.slice(0, 3)), 1);
+  assert.equal(store.find("A", 1).state, "waiting_quota");
+  assert.equal(store.clearSelected(records), 3);
+  assert.equal(store.find("A", 1).state, "waiting_quota");
+  store.cancel("A", 1);
+  assert.equal(store.find("A", 1).retryAfter, undefined);
+});
+
+test("automatic quota resume skips existing PDFs and stops missing items without requests", async () => {
+  const records = ["A", "B"].map(key => entry(key, "waiting_quota", 1, { retryAfter: "2020-01-01T00:10:00Z" }));
+  const { store, engine, submitted, items } = setup(records, { hasPDF: (item: any) => item.itemKey === "A" });
+  items.delete(records[1].itemID);
+  await engine.resumeQuotaWaiting();
+  assert.deepEqual(submitted, []);
+  assert.equal(store.find("A", 1).state, "done");
+  assert.equal(store.find("B", 1).state, "failed");
+});
+
+test("serialized batches share quota backoff", async () => {
+  const records = [entry("A", "failed"), entry("B", "failed")];
+  const { engine, store, submitted } = setup(records, { submit: async () => { throw new Error("当日传递次数已达上限"); } });
+  await Promise.all(records.map(record => engine.retryProblemEntries([record])));
+  assert.deepEqual(submitted, ["A"]);
+  assert.equal(store.find("B", 1).state, "waiting_quota");
 });

@@ -1,6 +1,6 @@
 # FullTextFlow for Zotero
 
-**Current preview: 0.4.0**
+**Current preview: 0.4.1**
 
 **FullTextFlow** is a Zotero plugin for selectively completing missing full-text PDFs at the **Collection** level. It is intended for research libraries where only high-priority project folders need complete PDFs.
 
@@ -182,7 +182,11 @@ Every selection action displays the number of eligible records:
 
 **检查远端进度** checks already-submitted work without submitting new requests. **聚联登录** opens login and resumes waiting tasks after verification; already-submitted requests resume polling instead of resubmitting.
 
-Daily-quota failures have an explicit banner and a retry warning. FullTextFlow does not know the account's numeric quota or exact reset time. Failed tasks do not retry automatically. To clear all failed history, filter **失败**, select all visible results, then **移除选中记录**.
+Starting with 0.4.1, explicit `当日传递次数已达上限` submission errors enter **等待额度恢复** instead of failed. New JLSS submissions pause until **00:10 the following day in the Mac's local timezone**. This is a conservative client schedule, not a verified provider reset time. Background checks resume due work within the configured polling interval; if Zotero is closed or the Mac is asleep, work continues after the next launch/wake. If the provider still reports the limit, the queue is deferred to the next local day, without repeatedly submitting the remaining batch.
+
+Waiting tasks persist across restarts, retain their retrieval strategy, and cannot be removed by finished-history cleanup. Use **停止选中** to disable their automatic retry. Existing remote tasks continue polling/downloading; usable local PDFs are skipped. A login error pauses for login; other failures remain failed. Quota exhaustion is treated as a deferral rather than triggering Zotero fallback.
+
+Older quota-failed records are not silently retried. Select them and choose **次日自动获取** to enroll them; records with evidence of an existing remote submission are excluded. FullTextFlow does not know the account's numeric quota. To remove failed history instead, filter **失败**, select the visible results, then **移除选中记录**.
 
 Cancellation is a local FullTextFlow stop. If a request was already submitted to JLSS, the remote JLSS task may continue, but FullTextFlow will no longer poll or download it.
 
@@ -198,7 +202,7 @@ Cancellation is a local FullTextFlow stop. If a request was already submitted to
 - JLSS integration is **unofficial**. Observed endpoints are not documented as a stable public API and can change.
 - Use FullTextFlow only within your institution's literature-delivery permissions, quotas, and applicable terms.
 
-## Current version: 0.4.0 Preview
+## Current version: 0.4.1 Preview
 
 Implemented:
 

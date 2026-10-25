@@ -8,6 +8,9 @@ import { hasUsablePDF } from "./AttachmentDetector";
 import { NativeFullText } from "./NativeFullText";
 import { PdfVerifier } from "./PdfVerifier";
 import { getRetrievalStrategy } from "./RetrievalStrategy";
+import { isDailyQuotaError, nextQuotaAttempt } from "./QuotaRetry";
+
+type EnqueueResult = { queued: number; native: number; skipped: number; failed: number; waitingAuth: number; waitingQuota: number };
 
 type RecordMatch = {
   record: any;
@@ -19,12 +22,14 @@ export class FlowEngine {
   private timer: any = null;
   private polling = false;
   private cancelGeneration = 0;
+  private submissionTail: Promise<unknown> = Promise.resolve();
+  private resumingQuota = false;
 
   start() {
     this.stop();
     const minutes = Math.max(1, Number(Zotero.Prefs.get(`${PREF_PREFIX}.pollMinutes`) || 5));
-    this.timer = setInterval(() => this.poll().catch(e => Zotero.debug(`FullTextFlow poll error: ${e}`)), minutes * 60_000);
-    setTimeout(() => this.poll().catch(() => {}), 15_000);
+    this.timer = setInterval(() => this.tick().catch(e => Zotero.debug(`FullTextFlow background error: ${e}`)), minutes * 60_000);
+    setTimeout(() => this.tick().catch(() => {}), 15_000);
   }
 
   stop() {
@@ -32,12 +37,24 @@ export class FlowEngine {
     this.timer = null;
   }
 
-  async enqueueMetadata(list: ItemMetadata[], resumeWaitingAuth = false): Promise<{queued: number; native: number; skipped: number; failed: number; waitingAuth: number}> {
-    let queued = 0, native = 0, skipped = 0, failed = 0, waitingAuth = 0;
+  async tick() {
+    // Keep download/status polling independent of potentially slow submissions.
+    await Promise.all([this.resumeQuotaWaiting(), this.poll()]);
+  }
+
+  enqueueMetadata(list: ItemMetadata[], resumeWaitingAuth = false, resumeQuota = false): Promise<EnqueueResult> {
+    const generation = this.cancelGeneration;
+    const task = this.submissionTail.then(() => generation === this.cancelGeneration
+      ? this.processMetadata(list, resumeWaitingAuth, resumeQuota)
+      : { queued: 0, native: 0, skipped: list.length, failed: 0, waitingAuth: 0, waitingQuota: 0 });
+    this.submissionTail = task.catch(() => {});
+    return task;
+  }
+
+  private async processMetadata(list: ItemMetadata[], resumeWaitingAuth: boolean, resumeQuota: boolean): Promise<EnqueueResult> {
+    let queued = 0, native = 0, skipped = 0, failed = 0, waitingAuth = 0, waitingQuota = 0;
     const generation = this.cancelGeneration;
     const maxBatch = Math.max(1, Number(Zotero.Prefs.get(`${PREF_PREFIX}.maxBatch`) || 50));
-    const strategy = getRetrievalStrategy();
-    const nativeFirst = strategy === "zotero_then_jlss" || strategy === "zotero_only";
 
     for (const metadata of list.slice(0, maxBatch)) {
       if (generation !== this.cancelGeneration) break;
@@ -45,8 +62,13 @@ export class FlowEngine {
       if (!item || await hasUsablePDF(item)) { skipped++; continue; }
 
       const existing = QueueStore.load().find(e => e.libraryID === metadata.libraryID && e.itemKey === metadata.itemKey);
+      // A scheduled task may have been stopped while awaiting the submission lock.
+      if (resumeQuota && existing?.state !== "waiting_quota") { skipped++; continue; }
       if (existing && !["failed", "review", "done", "cancelled"].includes(existing.state)
-        && !(resumeWaitingAuth && existing.state === "waiting_auth")) { skipped++; continue; }
+        && !(resumeWaitingAuth && existing.state === "waiting_auth")
+        && !(resumeQuota && existing.state === "waiting_quota")) { skipped++; continue; }
+      const strategy = resumeQuota ? existing.retrievalStrategy || getRetrievalStrategy() : getRetrievalStrategy();
+      const nativeFirst = strategy === "zotero_then_jlss" || strategy === "zotero_only";
       if (existing) {
         QueueStore.resetForRetry(metadata.itemKey, metadata.libraryID);
       }
@@ -117,6 +139,12 @@ export class FlowEngine {
 
       try {
         if (QueueStore.isCancelled(metadata.itemKey, metadata.libraryID)) continue;
+        const quotaUntil = String(Zotero.Prefs.get(`${PREF_PREFIX}.quotaRetryAfter`) || "");
+        if (Date.parse(quotaUntil) > Date.now()) {
+          this.deferForQuota(metadata, quotaUntil);
+          waitingQuota++;
+          continue;
+        }
         QueueStore.patch(metadata.itemKey, metadata.libraryID, {
           state: "queued",
           source: "jlss",
@@ -159,6 +187,17 @@ export class FlowEngine {
         }
         else {
           const message = e instanceof Error ? e.message : String(e);
+          if (isDailyQuotaError(message)) {
+            const retryAfter = nextQuotaAttempt();
+            Zotero.Prefs.set(`${PREF_PREFIX}.quotaRetryAfter`, retryAfter);
+            this.deferForQuota(metadata, retryAfter);
+            // Also postpone other waiting records, including those outside this batch.
+            for (const entry of QueueStore.load().filter(e => e.state === "waiting_quota")) {
+              this.deferForQuota(entry, retryAfter);
+            }
+            waitingQuota++;
+            continue;
+          }
           if (strategy === "jlss_then_zotero") {
             const fallbackFound = await this.tryNativeFallback(item, metadata, `聚联提交失败：${message}`);
             if (fallbackFound) { native++; continue; }
@@ -173,7 +212,56 @@ export class FlowEngine {
       }
     }
     setTimeout(() => this.poll().catch(() => {}), 8000);
-    return { queued, native, skipped, failed, waitingAuth };
+    return { queued, native, skipped, failed, waitingAuth, waitingQuota };
+  }
+
+  private deferForQuota(entry: QueueTarget, retryAfter: string) {
+    QueueStore.patch(entry.itemKey, entry.libraryID, {
+      state: "waiting_quota", source: "jlss", retryAfter, nextCheckAt: undefined,
+      error: undefined, diagnosticLevel: "info",
+      diagnosticMessage: "聚联当日传递次数已达上限；任务已保留，将在计划时间后自动尝试。"
+    });
+  }
+
+  scheduleQuotaSelected(targets: QueueTarget[]): number {
+    const keys = new Set(targets.map(e => `${e.libraryID}:${e.itemKey}`));
+    const retryAfter = nextQuotaAttempt();
+    let count = 0;
+    for (const entry of QueueStore.load()) {
+      if (entry.state !== "failed" || !keys.has(`${entry.libraryID}:${entry.itemKey}`)
+        || entry.submittedAt || entry.taskUUID || entry.taskCode
+        || !isDailyQuotaError(`${entry.error || ""} ${entry.diagnosticMessage || ""}`)) continue;
+      this.deferForQuota(entry, retryAfter);
+      count++;
+    }
+    return count;
+  }
+
+  async resumeQuotaWaiting() {
+    if (this.resumingQuota) return;
+    this.resumingQuota = true;
+    try {
+      const quotaUntil = String(Zotero.Prefs.get(`${PREF_PREFIX}.quotaRetryAfter`) || "");
+      if (Date.parse(quotaUntil) > Date.now()) return;
+      const due = QueueStore.load().filter(e => e.state === "waiting_quota" && Date.parse(e.retryAfter || "") <= Date.now());
+      const list: ItemMetadata[] = [];
+      for (const entry of due) {
+        const item: any = Zotero.Items.get(entry.itemID);
+        if (!item?.isRegularItem?.()) {
+          QueueStore.patch(entry.itemKey, entry.libraryID, { state: "failed", retryAfter: undefined, error: "Zotero 条目已不存在，已停止自动重试。", diagnosticMessage: undefined });
+          continue;
+        }
+        if (await hasUsablePDF(item)) {
+          QueueStore.patch(entry.itemKey, entry.libraryID, { state: "done", retryAfter: undefined, error: undefined, diagnosticMessage: "已有可用 PDF，未重复提交聚联。" });
+          continue;
+        }
+        const metadata = extractItemMetadata(item);
+        if (metadata.queryText) list.push(metadata);
+        else QueueStore.patch(entry.itemKey, entry.libraryID, { state: "failed", retryAfter: undefined, error: "缺少检索信息，已停止自动重试。", diagnosticMessage: undefined });
+      }
+      if (list.length) await this.enqueueMetadata(list, false, true);
+    }
+    finally { this.resumingQuota = false; }
   }
 
   async enqueueItems(items: any[]) {
@@ -187,7 +275,7 @@ export class FlowEngine {
     return this.enqueueMetadata(list);
   }
 
-  async retryProblemEntries(targets: QueueTarget[]): Promise<{queued: number; native: number; skipped: number; failed: number; waitingAuth: number}> {
+  async retryProblemEntries(targets: QueueTarget[]): Promise<EnqueueResult> {
     const keys = new Set(targets.map(e => `${e.libraryID}:${e.itemKey}`));
     const problem = QueueStore.load().filter(e => keys.has(`${e.libraryID}:${e.itemKey}`) && isRetryableState(e.state));
     const list: ItemMetadata[] = [];
@@ -253,7 +341,7 @@ export class FlowEngine {
     return { confirmed, missing };
   }
 
-  async resumeAuthWaiting(): Promise<{queued: number; native: number; skipped: number; failed: number; waitingAuth: number}> {
+  async resumeAuthWaiting(): Promise<EnqueueResult> {
     const waiting = QueueStore.load().filter(e => e.state === "waiting_auth");
     const list: ItemMetadata[] = [];
     for (const entry of waiting) {
@@ -267,7 +355,7 @@ export class FlowEngine {
       if (md.queryText) list.push(md);
     }
     const result = list.length ? await this.enqueueMetadata(list, true)
-      : { queued: 0, native: 0, skipped: 0, failed: 0, waitingAuth: 0 };
+      : { queued: 0, native: 0, skipped: 0, failed: 0, waitingAuth: 0, waitingQuota: 0 };
     await this.poll();
     return result;
   }

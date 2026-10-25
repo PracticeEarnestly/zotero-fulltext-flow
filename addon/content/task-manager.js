@@ -3,11 +3,11 @@
   const api = window.arguments?.[0]?.wrappedJSObject;
   const HTML_NS = "http://www.w3.org/1999/xhtml";
   const labels = {
-    queued: "等待提交", native_search: "Zotero 查找中", waiting_auth: "等待登录",
+    queued: "等待提交", native_search: "Zotero 查找中", waiting_auth: "等待登录", waiting_quota: "等待额度恢复",
     submitted: "聚联已提交", pending: "聚联处理中", downloading: "下载 / 核验中",
     done: "已完成", review: "需复核 PDF", failed: "失败（已停止）", cancelled: "已停止"
   };
-  const filters = { all: "全部", active: "进行中", waiting_auth: "等待登录", failed: "失败", review: "需复核", done: "已完成", cancelled: "已停止" };
+  const filters = { all: "全部", active: "进行中", waiting_auth: "等待登录", waiting_quota: "等待额度", failed: "失败", review: "需复核", done: "已完成", cancelled: "已停止" };
   const verificationLabels = { verified: "核验通过", manual: "用户已人工确认", inconclusive: "证据不足，建议人工核对", review: "需人工核对" };
   const selected = new Set();
   const expanded = new Set();
@@ -17,7 +17,7 @@
   const keyOf = row => `${Number(row.libraryID)}:${String(row.itemKey)}`;
   const targets = list => list.map(row => ({ itemKey: row.itemKey, libraryID: Number(row.libraryID) }));
   const quotaLimited = row => /当日传递次数已达上限/.test(`${row.reason || ""} ${row.diagnosticMessage || ""}`);
-  const matchesFilter = (row, value) => value === "all" || (value === "active" ? row.canCancel && row.state !== "waiting_auth" : row.state === value);
+  const matchesFilter = (row, value) => value === "all" || (value === "active" ? row.canCancel && !["waiting_auth", "waiting_quota"].includes(row.state) : row.state === value);
   const chosen = capability => visible.filter(row => selected.has(keyOf(row)) && (!capability || row[capability]));
 
   function html(tag, text, className = "") {
@@ -37,12 +37,13 @@
     return [...new Set(parts)].filter((part, index, all) => !all.some((other, i) => i !== index && other.includes(part))).join("；");
   }
   function guidance(row) {
-    if (row.state === "failed" && quotaLimited(row)) return "聚联当日额度已用尽。额度恢复后再重新获取；反复重试不能恢复额度。";
+    if (row.state === "failed" && quotaLimited(row)) return "聚联当日额度已用尽。可选择“次日自动获取”保留任务等待恢复。";
     switch (row.state) {
       case "failed": return "处理已结束。检查下方原因后重新获取，或移除本地记录。";
       case "cancelled": return "本地处理已停止；需要时可重新获取或移除记录。";
       case "review": return "点击论文检查 PDF，一致后点击“确认 PDF 正确”；也可重新自动核验。";
       case "waiting_auth": return "点击“聚联登录”。验证成功后继续等待登录的任务。";
+      case "waiting_quota": return `计划 ${time(row.retryAfter)} 后自动尝试。Zotero 未运行时将在下次启动后继续；可用“停止选中”取消。`;
       case "done": return "全文已在 Zotero 中。可移除本地记录，保留 PDF。";
       case "queued": return "等待提交全文请求。";
       case "native_search": return "正在通过 Zotero 查找全文。";
@@ -61,6 +62,7 @@
     $("selection-summary").textContent = `显示 ${visible.length} / ${rows.length} 条 · 已选 ${count} 条`;
     for (const [id, capability, label] of [
       ["retry", "canRetry", "重新获取"], ["recheck", "canRecheck", "重新核验 PDF"],
+      ["schedule-quota", "canScheduleQuota", "次日自动获取"],
       ["confirm-reviewed", "canRecheck", "确认 PDF 正确"],
       ["cancel-selected", "canCancel", "停止选中"], ["clear-selected", "canClear", "移除选中记录"]
     ]) {
@@ -124,6 +126,7 @@
         `上次匹配：${time(row.lastMatchedAt)}    上次检查：${time(row.lastCheckedAt)}`,
         `下次检查：${row.canCancel && row.state !== "waiting_auth" ? time(row.nextCheckAt) : "已停止或等待登录"}`,
         `PDF 核验：${verificationLabels[row.verification] || "尚未核验"}`,
+        `额度重试计划：${time(row.retryAfter)}`,
         `说明：${explanation || "—"}`
       ].join("\n"), "details-cell");
       detail.colSpan = 6;
@@ -154,9 +157,11 @@
       option.textContent = `${filters[option.value]}（${rows.filter(row => matchesFilter(row, option.value)).length}）`;
     }
     $("active-summary").textContent = `共 ${rows.length} 条 · 进行中 ${rows.filter(row => matchesFilter(row, "active")).length} · 等待登录 ${rows.filter(row => row.state === "waiting_auth").length} · 失败 ${rows.filter(row => row.state === "failed").length} · 需复核 ${rows.filter(row => row.state === "review").length}`;
+    const waitingQuota = rows.filter(row => row.state === "waiting_quota").length;
+    $("active-summary").textContent += ` · 等待额度 ${waitingQuota}`;
     const quotaCount = rows.filter(row => row.state === "failed" && quotaLimited(row)).length;
-    $("quota-notice").hidden = quotaCount === 0;
-    $("quota-notice").textContent = `${quotaCount} 条任务因聚联当日额度用尽而失败。请以聚联账号显示的额度和恢复时间为准；本插件无法读取准确日限，重新获取可能再次失败。`;
+    $("quota-notice").hidden = quotaCount + waitingQuota === 0;
+    $("quota-notice").textContent = `${waitingQuota} 条等待额度，将在计划时间后自动尝试；${quotaCount} 条旧失败记录可选择“次日自动获取”。默认安排在本机时间次日 00:10 后，仍限额则再延至下一天。本插件无法读取准确日限或重置时间。`;
     updateActions();
   }
   async function refresh() {
@@ -185,7 +190,7 @@
     if (!window.confirm(`重新获取选中的 ${eligible.length} 条失败或已停止任务？\n\n按当前获取策略执行，可能重新向聚联提交并消耗额度；已有可用 PDF 的条目会跳过。${quota ? `\n\n其中 ${quota} 条曾因当日额度用尽而失败，请确认额度已恢复。` : ""}`)) return;
     feedback(`正在重新获取 ${eligible.length} 条任务…`);
     const result = await api.retrySelected(targets(eligible));
-    feedback(`重新获取结束：聚联已提交 ${result.queued}，Zotero 已获取 ${result.native}，失败 ${result.failed}，等待登录 ${result.waitingAuth}，跳过 ${result.skipped}（含已有 PDF 或超出批次上限）。`);
+    feedback(`重新获取结束：聚联已提交 ${result.queued}，Zotero 已获取 ${result.native}，等待额度 ${result.waitingQuota || 0}，失败 ${result.failed}，等待登录 ${result.waitingAuth}，跳过 ${result.skipped}（含已有 PDF 或超出批次上限）。`);
   }
   async function stopSelected() {
     const eligible = chosen("canCancel");
@@ -206,6 +211,12 @@
   }
   window.addEventListener("load", () => {
     $("retry").addEventListener("click", () => run(retrySelected));
+    $("schedule-quota").addEventListener("click", () => run(async () => {
+      const eligible = chosen("canScheduleQuota");
+      if (!eligible.length || !window.confirm(`将选中的 ${eligible.length} 条额度失败记录安排为次日自动获取？\n\n本机时间次日 00:10 后按后台间隔自动尝试，可能消耗聚联额度。Zotero 未运行时，下次启动后继续。可随时停止。`)) return;
+      const count = api.scheduleQuotaSelected(targets(eligible));
+      feedback(`已安排 ${count} 条任务次日自动获取。`);
+    }));
     $("cancel-selected").addEventListener("click", async () => {
       try { await stopSelected(); }
       catch (error) { feedback(`停止失败：${error.message || error}`, true); }

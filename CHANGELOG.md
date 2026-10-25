@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 - 2026-10-25
+
+- Preserve daily-quota rejections as `waiting_quota`, with a persisted next attempt at 00:10 the following local day. Background checks resume overdue work after restart; another quota rejection defers waiting tasks to the next day.
+- Share a persisted quota backoff across serialized submission batches; existing remote tasks continue polling and downloading. Automatic retries retain the recorded retrieval strategy, skip existing PDFs, and respect batch limits and cancellation.
+- Add a waiting-quota filter, scheduled time, and an explicit action for enrolling selected legacy quota-failed records. Generic failures and stopped tasks never enroll automatically.
+- The schedule is a conservative client policy, not a verified JLSS reset time. Quota exhaustion is deferred instead of triggering Zotero fallback; other failures retain the configured fallback behavior.
+
 ## 0.4.0 - 2026-10-25
 
 - Reorganize the task center around status filters, search, selection counts, and scoped actions. Terminal records can now be selected for retry/removal; hidden rows are never included.

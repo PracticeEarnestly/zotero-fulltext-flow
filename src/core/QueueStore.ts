@@ -26,6 +26,7 @@ export type QueueEntry = {
   updatedAt: string;
   lastCheckedAt?: string;
   nextCheckAt?: string;
+  retryAfter?: string;
   taskUUID?: string;
   resourceUUID?: string;
   taskCode?: string;
@@ -152,6 +153,7 @@ export class QueueStore {
       submittedAt: undefined,
       lastCheckedAt: undefined,
       nextCheckAt: undefined,
+      retryAfter: undefined,
       cancelledAt: undefined,
       cancelNote: undefined,
       retrievalStrategy: undefined,
@@ -171,6 +173,7 @@ export class QueueStore {
       ? "已停止 FullTextFlow 本地轮询/下载；若任务此前已提交聚联，聚联远端任务可能仍继续。"
       : "已取消，FullTextFlow 不再继续处理此任务。";
     entry.nextCheckAt = undefined;
+    entry.retryAfter = undefined;
     entry.updatedAt = new Date().toISOString();
     this.save(entries);
     return true;
@@ -189,6 +192,7 @@ export class QueueStore {
         ? "已停止 FullTextFlow 本地轮询/下载；若任务此前已提交聚联，聚联远端任务可能仍继续。"
         : "已取消，FullTextFlow 不再继续处理此任务。";
       entry.nextCheckAt = undefined;
+      entry.retryAfter = undefined;
       entry.updatedAt = now;
       count++;
     }
